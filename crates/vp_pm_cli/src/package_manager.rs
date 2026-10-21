@@ -340,6 +340,20 @@ impl PackageManager {
     pub fn get_bin_prefix(&self) -> AbsolutePathBuf {
         self.bin_prefix.clone()
     }
+
+    /// Let pnpm apply its `verifyDepsBeforeRun` setting before `vp run` starts
+    /// scripts. pnpm runs the check itself for `pnpm run` and `pnpm exec`, so a
+    /// no-op `pnpm exec` gives `vp run` the same install-or-fail behavior.
+    /// Other package managers have no such check and succeed immediately.
+    pub async fn verify_deps_before_run(
+        &self,
+        cwd: &AbsolutePath,
+    ) -> Result<std::process::ExitStatus, Error> {
+        if self.client != PackageManagerType::Pnpm {
+            return Ok(std::process::ExitStatus::default());
+        }
+        vp_command::run_command("pnpm", ["exec", "node", "-e", "0"], &HashMap::new(), cwd).await
+    }
 }
 
 /// Get the package manager name, version, optional hash, and detection source

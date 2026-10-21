@@ -6,6 +6,8 @@
 `vpr` is available as a standalone shorthand for `vp run`. All examples below work with both `vp run` and `vpr`.
 :::
 
+In pnpm projects, `vp run` first applies pnpm's [`verifyDepsBeforeRun`](https://pnpm.io/settings#verifydepsbeforerun) setting, as `pnpm run` does, so scripts don't start against a stale `node_modules`. Other package managers have no such check.
+
 ## Overview
 
 Use `vp run` with existing `package.json` scripts:

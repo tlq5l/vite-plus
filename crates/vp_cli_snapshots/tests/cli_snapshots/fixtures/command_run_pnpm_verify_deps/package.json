@@ -1,0 +1,11 @@
+{
+  "name": "command-run-pnpm-verify-deps",
+  "version": "1.0.0",
+  "scripts": {
+    "check": "node -e \"console.log(require('testnpm2/package.json').name)\""
+  },
+  "dependencies": {
+    "testnpm2": "1.0.0"
+  },
+  "packageManager": "pnpm@12.0.0-beta.0"
+}

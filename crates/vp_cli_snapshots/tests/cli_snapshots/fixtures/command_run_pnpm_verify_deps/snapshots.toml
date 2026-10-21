@@ -1,0 +1,9 @@
+[[case]]
+name = "command_run_pnpm_verify_deps"
+vp = "global"
+local-registry = true
+skip-platforms = ["windows"]
+steps = [
+  { argv = ["vpt", "stat-file", "node_modules"], comment = "dependencies are not installed yet" },
+  { argv = ["vp", "run", "check"], comment = "pnpm's verifyDepsBeforeRun installs the missing dependencies, then the script runs" },
+]

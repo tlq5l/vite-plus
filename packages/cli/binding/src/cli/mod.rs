@@ -273,6 +273,15 @@ async fn execute_vite_task_command(
             // Session::init snapshots the process env, so this must also happen
             // before it.
             lifecycle_env::stamp_package_manager_lifecycle_env(&pm, node_version.as_deref());
+
+            // pnpm checks `node_modules` against the lockfile before `pnpm run`;
+            // do the same before `vp run` starts scripts.
+            if matches!(command, vt::Command::Run(_)) {
+                let status = pm.verify_deps_before_run(&cwd).await?;
+                if !status.success() {
+                    return Ok(types::exit_status_from(status));
+                }
+            }
         }
         Err(error) if error.is_integrity_failure() => return Err(error),
         Err(error) => {
