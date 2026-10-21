@@ -201,6 +201,7 @@ minimumReleaseAgeExclude:
   - emnapi
   - '@vitejs/devtools'
   - '@vitejs/devtools-*'
+  - resolve.exports@2.0.4
 overrides:
   rolldown: workspace:rolldown@*
   vite: workspace:@voidzero-dev/vite-plus-core@*
@@ -218,6 +219,7 @@ packageExtensions:
   '@volar/typescript':
     dependencies:
       '@volar/language-service': 2.4.28
+      typescript: ~6.0.3
   '@vue/compiler-core':
     dependencies:
       '@babel/types': ^7.29.8
@@ -227,6 +229,10 @@ packageExtensions:
   '@vue/language-core':
     dependencies:
       '@vue/compiler-sfc': ^3.5.0
+      typescript: ~6.0.3
+  '@volar/language-service':
+    dependencies:
+      typescript: ~6.0.3
 patchedDependencies:
   chokidar@3.6.0: vite/patches/chokidar@3.6.0.patch
   dotenv-expand@13.0.0: vite/patches/dotenv-expand@13.0.0.patch
