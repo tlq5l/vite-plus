@@ -18,7 +18,7 @@ Migration is idempotent: running it again after a successful migration should no
 
 On a project that already depends on `vite-plus`, `vp migrate` performs an upgrade only: it updates dependencies and package-manager configuration and finalizes imports. It does not touch project setup.
 
-- `--full` also runs the setup actions: git hooks, editor config, agent files, ESLint, Prettier, and tsup migration, framework shims, the tsconfig `baseUrl` fix, and the Volta to `.node-version` conversion.
+- `--full` also runs the setup actions: git hooks, editor config, agent files, ESLint, Prettier, tsup, and tsx migration, framework shims, the tsconfig `baseUrl` fix, and the Volta to `.node-version` conversion.
 - `--hooks`, `--agent`, and `--editor` opt into a single setup action without `--full`.
 
 When a default upgrade skips setup actions that would apply, it prints a hint to run `vp migrate --full`. Fresh (non Vite+) projects always run the full migration.
@@ -261,6 +261,7 @@ Migration rewrites commands provided by the Vite+ toolchain in `package.json` sc
 | `eslint`      | `vp lint`, when its optional migration runs |
 | `prettier`    | `vp fmt`, when its optional migration runs  |
 | `tsup`        | `vp pack`, when its optional migration runs |
+| `tsx`         | `vpx`, when its optional migration runs     |
 
 For commands launched through `bunx`, migration preserves `bunx` and its `--bun` flag (keeping the user's chosen runtime) and rewrites only the managed command. This also works when `bunx` follows a command-launcher delimiter such as `run` or `--`:
 
@@ -272,6 +273,27 @@ For commands launched through `bunx`, migration preserves `bunx` and its `--bun`
 | `dotenv -e .env.test -- bunx --bun oxlint --type-aware` | `dotenv -e .env.test -- bunx --bun vp lint --type-aware` |
 
 Unrelated `bunx` commands and other package-executor forms remain unchanged.
+
+### tsx to `vpx`
+
+When a `package.json` script or lint-staged task runs [tsx](https://tsx.is), migration offers to move it to [`vpx`](/guide/vpx), Vite+'s TypeScript script runner. It rewrites scripts and lint-staged tasks in `package.json` and JSON lint-staged files, and `#!/usr/bin/env tsx` shebangs in script files:
+
+| Before                                   | After                                      |
+| ---------------------------------------- | ------------------------------------------ |
+| `tsx src/seed.ts --rows 10`              | `vpx src/seed.ts --rows 10`                |
+| `tsx watch --include "*.json" src/a.ts`  | `vpx --watch --include "*.json" src/a.ts`  |
+| `npx tsx a.ts`, `pnpm exec tsx a.ts`     | `vpx a.ts`                                 |
+| `node --import tsx ./a.ts`               | `vpx ./a.ts`                               |
+| `cross-env NODE_ENV=dev tsx a.ts`        | `cross-env NODE_ENV=dev vpx a.ts`          |
+| `concurrently "tsx watch a.ts" "vp dev"` | `concurrently "vpx --watch a.ts" "vp dev"` |
+
+`tsx watch` becomes `vpx --watch`, never `vpx watch`, which runs the npm package `watch`. Node.js options and tsx watch options keep their order, and `--no-cache` is dropped. `vpx` needs the same Node.js versions as Vite+ itself, and migration already upgrades incompatible runtime pins to them (see [Vitest 5](/guide/vitest-v5)).
+
+Migration keeps tsx, with a warning, for a command `vpx` cannot run: `--eval` or `--print` code, the REPL, `--test` without files, an entry without a file extension, and commands with pipes, variables, or subshells. It also keeps tsx in a package that lists it in `dependencies` or `peerDependencies`, since `vpx` comes from the `vite-plus` devDependency.
+
+Migration removes the `tsx` devDependency only when nothing uses tsx anymore: no kept script, no import of `tsx` or its subpaths such as `tsx/esm/api`, no shebang, and no tsx command in CI workflows, git hooks, or shell scripts. The root's dependency stays while any workspace package still uses tsx. When tsx stays, the warning names a file that still uses it.
+
+A script that uses `import` and `__dirname`, `__filename`, or `require()` in a package without `"type": "module"` gets a warning: tsx ran it as CommonJS, and `vpx` runs it as an ES module. See [Coming from tsx](/guide/vpx#coming-from-tsx) for the other differences.
 
 ## Continuous Integration Rules
 
