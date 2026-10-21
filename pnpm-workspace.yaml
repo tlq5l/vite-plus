@@ -120,7 +120,7 @@ catalog:
   tinyglobby: ^0.2.15
   tsdown: ^0.23.1
   tsx: ^4.22.0
-  typescript: ^6.0.0
+  typescript: ~7.0.2
   unified: ^11.0.5
   valibot: 1.5.0
   validate-npm-package-name: ^8.0.0
@@ -206,6 +206,9 @@ overrides:
   rolldown: workspace:rolldown@*
   vite: workspace:@voidzero-dev/vite-plus-core@*
   vite-plus: workspace:vite-plus@*
+  rolldown>typescript: ^6.0.0
+  '@volar/typescript>typescript@>=7': '-'
+  '@volar/language-service>typescript@>=7': '-'
 packageExtensions:
   '@rollup/plugin-dynamic-import-vars':
     dependencies:

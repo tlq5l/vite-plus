@@ -402,8 +402,8 @@ catalogs:
       specifier: ^0.23.1
       version: 0.23.1
     typescript:
-      specifier: ^6.0.0
-      version: 6.0.3
+      specifier: ~7.0.2
+      version: 7.0.2
     valibot:
       specifier: 1.5.0
       version: 1.5.0
@@ -433,6 +433,9 @@ overrides:
   rolldown: workspace:rolldown@*
   vite: workspace:@voidzero-dev/vite-plus-core@*
   vite-plus: workspace:vite-plus@*
+  rolldown>typescript: ^6.0.0
+  '@volar/typescript>typescript@>=7': '-'
+  '@volar/language-service>typescript@>=7': '-'
 
 packageExtensionsChecksum: sha256-If0sPrN3HV7D+EgeoSZUm8CYcOJOyo0gWobIh2WtTMM=
 
@@ -474,7 +477,7 @@ importers:
         version: 1.62.1
       typescript:
         specifier: 'catalog:'
-        version: 6.0.3
+        version: 7.0.2
       vite:
         specifier: workspace:@voidzero-dev/vite-plus-core@*
         version: link:packages/core
@@ -604,7 +607,7 @@ importers:
         version: 0.2.17
       tsdown:
         specifier: 'catalog:'
-        version: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@6.0.3)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@6.0.3))
+        version: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@7.0.2)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@7.0.2))
       validate-npm-package-name:
         specifier: 'catalog:'
         version: 8.0.0
@@ -634,7 +637,7 @@ importers:
         version: 24.19.2
       '@volar/typescript':
         specifier: ~2.4.0
-        version: 2.4.28(typescript@6.0.3)
+        version: 2.4.28
       '@vue/language-core':
         specifier: ~3.2.0 || ~3.3.0
         version: 3.3.12
@@ -682,7 +685,7 @@ importers:
         version: 0.3.1
       vue-tsc:
         specifier: ~3.2.0 || ~3.3.0
-        version: 3.3.12(typescript@6.0.3)
+        version: 3.3.12(typescript@7.0.2)
       yaml:
         specifier: ^2.4.2
         version: 2.9.1
@@ -743,7 +746,7 @@ importers:
         version: link:../../rolldown/packages/rolldown
       rolldown-plugin-dts:
         specifier: 'catalog:'
-        version: 0.28.8(@typescript/native-preview@7.0.0-dev.20260707.2)(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(rolldown@rolldown+packages+rolldown)(typescript@6.0.3)(vue-tsc@3.3.12(typescript@6.0.3))
+        version: 0.28.8(@typescript/native-preview@7.0.0-dev.20260707.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(rolldown@rolldown+packages+rolldown)(typescript@7.0.2)(vue-tsc@3.3.12(typescript@7.0.2))
       rollup:
         specifier: 'catalog:'
         version: 4.63.1
@@ -761,10 +764,10 @@ importers:
         version: 1.2.2
       tsdown:
         specifier: 'catalog:'
-        version: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@6.0.3)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@6.0.3))
+        version: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@7.0.2)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@7.0.2))
       typescript:
         specifier: 'catalog:'
-        version: 6.0.3
+        version: 7.0.2
       vite:
         specifier: workspace:@voidzero-dev/vite-plus-core@*
         version: 'link:'
@@ -802,7 +805,7 @@ importers:
         version: 2.1.0
       tsdown:
         specifier: 'catalog:'
-        version: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@6.0.3)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@6.0.3))
+        version: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@7.0.2)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@7.0.2))
 
   packages/tools:
     devDependencies:
@@ -850,7 +853,7 @@ importers:
         version: link:packages/rolldown
       typescript:
         specifier: 'catalog:'
-        version: 6.0.3
+        version: 7.0.2
       vite-plus:
         specifier: workspace:vite-plus@*
         version: link:../packages/cli
@@ -865,10 +868,10 @@ importers:
         version: 19.2.0(react@19.2.0)
       vue:
         specifier: 'catalog:'
-        version: 3.5.40(typescript@6.0.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-router:
         specifier: ^5.3.0
-        version: 5.3.1(@vue/compiler-sfc@3.5.40)(esbuild@0.28.2)(rolldown@rolldown+packages+rolldown)(rollup@4.63.1)(vite@packages+core)(vue@3.5.40(typescript@6.0.3))
+        version: 5.3.1(@vue/compiler-sfc@3.5.40)(esbuild@0.28.2)(rolldown@rolldown+packages+rolldown)(rollup@4.63.1)(vite@packages+core)(vue@3.5.40(typescript@7.0.2))
     devDependencies:
       '@babel/core':
         specifier: 'catalog:'
@@ -987,7 +990,7 @@ importers:
         version: 'link:'
       rolldown-plugin-dts:
         specifier: 'catalog:'
-        version: 0.28.8(@typescript/native-preview@7.0.0-dev.20260707.2)(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(rolldown@rolldown+packages+rolldown)(typescript@6.0.3)(vue-tsc@3.3.12(typescript@6.0.3))
+        version: 0.28.8(@typescript/native-preview@7.0.0-dev.20260707.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(rolldown@rolldown+packages+rolldown)(typescript@6.0.3)(vue-tsc@3.3.12(typescript@6.0.3))
       rollup:
         specifier: 'catalog:'
         version: 4.63.1
@@ -998,7 +1001,7 @@ importers:
         specifier: 'catalog:'
         version: 0.8.0
       typescript:
-        specifier: 'catalog:'
+        specifier: ^6.0.0
         version: 6.0.3
       valibot:
         specifier: 'catalog:'
@@ -1144,7 +1147,7 @@ importers:
         version: 1.3.1
       tsdown:
         specifier: ^0.23.1
-        version: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@6.0.3)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@6.0.3))
+        version: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@7.0.2)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@7.0.2))
       unrun:
         specifier: ^0.3.1
         version: 0.3.1
@@ -1199,7 +1202,7 @@ importers:
         version: 1.1.1
       tsdown:
         specifier: ^0.23.1
-        version: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@6.0.3)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@6.0.3))
+        version: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@7.0.2)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@7.0.2))
       unrun:
         specifier: ^0.3.1
         version: 0.3.1
@@ -1380,7 +1383,7 @@ importers:
         version: 2.0.4
       rolldown-plugin-dts:
         specifier: ^0.28.8
-        version: 0.28.8(@typescript/native-preview@7.0.0-dev.20260707.2)(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(rolldown@rolldown+packages+rolldown)(typescript@6.0.3)(vue-tsc@3.3.12(typescript@6.0.3))
+        version: 0.28.8(@typescript/native-preview@7.0.0-dev.20260707.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(rolldown@rolldown+packages+rolldown)(typescript@7.0.2)(vue-tsc@3.3.12(typescript@7.0.2))
       rollup:
         specifier: ^4.59.0
         version: 4.63.1
@@ -4712,22 +4715,12 @@ packages:
 
   '@volar/language-service@2.4.28':
     resolution: {integrity: sha512-Rh/wYCZJrI5vCwMk9xyw/Z+MsWxlJY1rmMZPsxUoJKfzIRjS/NF1NmnuEcrMbEVGja00aVpCsInJfixQTMdvLw==}
-    peerDependencies:
-      typescript: '*'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
 
   '@volar/source-map@2.4.28':
     resolution: {integrity: sha512-yX2BDBqJkRXfKw8my8VarTyjv48QwxdJtvRgUpNE5erCsgEUdI2DsLbpa+rOQVAJYshY99szEcRDmyHbF10ggQ==}
 
   '@volar/typescript@2.4.28':
     resolution: {integrity: sha512-Ja6yvWrbis2QtN4ClAKreeUZPVYMARDYZl9LMEv1iQ1QdepB6wn0jTRxA9MftYmYa4DQ4k/DaSZpFPUfxl8giw==}
-    peerDependencies:
-      typescript: '*'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
 
   '@vue-macros/common@3.1.4':
     resolution: {integrity: sha512-/5Fv+6DgIcM9ajY05ZmKBv+LMX1M9A0X+IUwDRVdt67ciw8OV9bvG2r34p3RiEadlsQybjhKPRKNXDC8Bp23cw==}
@@ -10697,7 +10690,7 @@ snapshots:
       lightningcss: 1.33.0
       postcss-load-config: 6.0.1(jiti@2.7.0)(postcss@8.5.31)(tsx@4.23.15)(yaml@2.9.1)
       rolldown: link:rolldown/packages/rolldown
-      tsdown: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@6.0.3)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@6.0.3))
+      tsdown: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@7.0.2)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@7.0.2))
     optionalDependencies:
       postcss: 8.5.31
       postcss-import: 16.2.0(postcss@8.5.31)
@@ -10713,7 +10706,7 @@ snapshots:
     dependencies:
       obug: 3.0.0
       tinyexec: 1.3.1
-      tsdown: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@6.0.3)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@6.0.3))
+      tsdown: 0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@7.0.2)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@7.0.2))
       verkit: 0.5.0
 
   '@tybys/wasm-util@0.10.3':
@@ -11080,27 +11073,25 @@ snapshots:
     dependencies:
       '@volar/source-map': 2.4.28
 
-  '@volar/language-service@2.4.28(typescript@6.0.3)':
+  '@volar/language-service@2.4.28':
     dependencies:
       '@volar/language-core': 2.4.28
+      typescript: 6.0.3
       vscode-languageserver-protocol: 3.18.4
       vscode-languageserver-textdocument: 1.0.15
       vscode-uri: 3.2.0
-    optionalDependencies:
-      typescript: 6.0.3
 
   '@volar/source-map@2.4.28': {}
 
-  '@volar/typescript@2.4.28(typescript@6.0.3)':
+  '@volar/typescript@2.4.28':
     dependencies:
       '@volar/language-core': 2.4.28
-      '@volar/language-service': 2.4.28(typescript@6.0.3)
+      '@volar/language-service': 2.4.28
       path-browserify: 1.0.1
-      vscode-uri: 3.2.0
-    optionalDependencies:
       typescript: 6.0.3
+      vscode-uri: 3.2.0
 
-  '@vue-macros/common@3.1.4(vue@3.5.40(typescript@6.0.3))':
+  '@vue-macros/common@3.1.4(vue@3.5.40(typescript@7.0.2))':
     dependencies:
       '@vue/compiler-sfc': 3.5.40
       ast-kit: 2.2.0
@@ -11108,7 +11099,7 @@ snapshots:
       magic-string-ast: 1.0.3
       unplugin-utils: 0.3.2
     optionalDependencies:
-      vue: 3.5.40(typescript@6.0.3)
+      vue: 3.5.40(typescript@7.0.2)
 
   '@vue/compiler-core@3.5.40':
     dependencies:
@@ -13534,7 +13525,7 @@ snapshots:
 
   rgb2hex@0.2.5: {}
 
-  rolldown-plugin-dts@0.28.8(@typescript/native-preview@7.0.0-dev.20260707.2)(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(rolldown@rolldown+packages+rolldown)(typescript@6.0.3)(vue-tsc@3.3.12(typescript@6.0.3)):
+  rolldown-plugin-dts@0.28.8(@typescript/native-preview@7.0.0-dev.20260707.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(rolldown@rolldown+packages+rolldown)(typescript@6.0.3)(vue-tsc@3.3.12(typescript@6.0.3)):
     dependencies:
       dts-resolver: 3.0.0(oxc-resolver@11.24.2)
       get-tsconfig: 5.0.0-beta.6
@@ -13545,10 +13536,28 @@ snapshots:
       yuku-parser: 0.19.0
     optionalDependencies:
       '@typescript/native-preview': 7.0.0-dev.20260707.2
-      '@volar/typescript': 2.4.28(typescript@6.0.3)
+      '@volar/typescript': 2.4.28
       '@vue/language-core': 3.3.12
       typescript: 6.0.3
       vue-tsc: 3.3.12(typescript@6.0.3)
+    transitivePeerDependencies:
+      - oxc-resolver
+
+  rolldown-plugin-dts@0.28.8(@typescript/native-preview@7.0.0-dev.20260707.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(rolldown@rolldown+packages+rolldown)(typescript@7.0.2)(vue-tsc@3.3.12(typescript@7.0.2)):
+    dependencies:
+      dts-resolver: 3.0.0(oxc-resolver@11.24.2)
+      get-tsconfig: 5.0.0-beta.6
+      obug: 3.0.0
+      rolldown: link:rolldown/packages/rolldown
+      yuku-ast: 0.19.0
+      yuku-codegen: 0.19.0
+      yuku-parser: 0.19.0
+    optionalDependencies:
+      '@typescript/native-preview': 7.0.0-dev.20260707.2
+      '@volar/typescript': 2.4.28
+      '@vue/language-core': 3.3.12
+      typescript: 7.0.2
+      vue-tsc: 3.3.12(typescript@7.0.2)
     transitivePeerDependencies:
       - oxc-resolver
 
@@ -14052,7 +14061,7 @@ snapshots:
       typescript: 7.0.2
     optional: true
 
-  tsdown@0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@6.0.3)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@6.0.3)):
+  tsdown@0.23.1(@arethetypeswrong/core@0.18.2)(@tsdown/css@0.23.1)(@tsdown/exe@0.23.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(@vitejs/devtools@0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core))(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@7.0.2)(unplugin-unused@0.5.6)(unrun@0.3.1)(vue-tsc@3.3.12(typescript@7.0.2)):
     dependencies:
       cac: 7.1.0
       defu: 6.1.7
@@ -14062,7 +14071,7 @@ snapshots:
       obug: 3.0.0
       picomatch: 4.0.7
       rolldown: link:rolldown/packages/rolldown
-      rolldown-plugin-dts: 0.28.8(@typescript/native-preview@7.0.0-dev.20260707.2)(@volar/typescript@2.4.28(typescript@6.0.3))(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(rolldown@rolldown+packages+rolldown)(typescript@6.0.3)(vue-tsc@3.3.12(typescript@6.0.3))
+      rolldown-plugin-dts: 0.28.8(@typescript/native-preview@7.0.0-dev.20260707.2)(@volar/typescript@2.4.28)(@vue/language-core@3.3.12)(oxc-resolver@11.24.2)(rolldown@rolldown+packages+rolldown)(typescript@7.0.2)(vue-tsc@3.3.12(typescript@7.0.2))
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
       tree-kill: 1.2.2
@@ -14075,7 +14084,7 @@ snapshots:
       '@vitejs/devtools': 0.8.0(crossws@0.4.12(srvx@1.0.6))(srvx@1.0.6)(vite@packages+core)
       publint: 0.3.24
       tsx: 4.23.15
-      typescript: 6.0.3
+      typescript: 7.0.2
       unplugin-unused: 0.5.6
       unrun: 0.3.1
     transitivePeerDependencies:
@@ -14316,9 +14325,9 @@ snapshots:
 
   vscode-uri@3.2.0: {}
 
-  vue-router@5.3.1(@vue/compiler-sfc@3.5.40)(esbuild@0.28.2)(rolldown@rolldown+packages+rolldown)(rollup@4.63.1)(vite@packages+core)(vue@3.5.40(typescript@6.0.3)):
+  vue-router@5.3.1(@vue/compiler-sfc@3.5.40)(esbuild@0.28.2)(rolldown@rolldown+packages+rolldown)(rollup@4.63.1)(vite@packages+core)(vue@3.5.40(typescript@7.0.2)):
     dependencies:
-      '@vue-macros/common': 3.1.4(vue@3.5.40(typescript@6.0.3))
+      '@vue-macros/common': 3.1.4(vue@3.5.40(typescript@7.0.2))
       '@vue/devtools-api': 8.2.1
       ast-walker-scope: 0.9.0
       chokidar: 5.0.0
@@ -14334,7 +14343,7 @@ snapshots:
       tinyglobby: 0.2.17
       unplugin: 3.3.0(esbuild@0.28.2)(rolldown@rolldown+packages+rolldown)(rollup@4.63.1)(vite@packages+core)
       unplugin-utils: 0.3.2
-      vue: 3.5.40(typescript@6.0.3)
+      vue: 3.5.40(typescript@7.0.2)
     optionalDependencies:
       '@vue/compiler-sfc': 3.5.40
       vite: link:packages/core
@@ -14350,11 +14359,18 @@ snapshots:
 
   vue-tsc@3.3.12(typescript@6.0.3):
     dependencies:
-      '@volar/typescript': 2.4.28(typescript@6.0.3)
+      '@volar/typescript': 2.4.28
       '@vue/language-core': 3.3.12
       typescript: 6.0.3
+    optional: true
 
-  vue@3.5.40(typescript@6.0.3):
+  vue-tsc@3.3.12(typescript@7.0.2):
+    dependencies:
+      '@volar/typescript': 2.4.28
+      '@vue/language-core': 3.3.12
+      typescript: 7.0.2
+
+  vue@3.5.40(typescript@7.0.2):
     dependencies:
       '@vue/compiler-dom': 3.5.40
       '@vue/compiler-sfc': 3.5.40
@@ -14362,7 +14378,7 @@ snapshots:
       '@vue/server-renderer': 3.5.40
       '@vue/shared': 3.5.40
     optionalDependencies:
-      typescript: 6.0.3
+      typescript: 7.0.2
 
   w3c-xmlserializer@5.0.0:
     dependencies:
