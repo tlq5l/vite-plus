@@ -22,6 +22,7 @@ describe('rewriteTsxCommand', () => {
     ],
     ['tsx watch --no-cache src/server.ts', 'vpx --watch src/server.ts'],
     ['tsx --no-cache ./a.ts', 'vpx ./a.ts'],
+    ['tsx --no_cache ./a.ts', 'vpx ./a.ts'],
     ['tsx --watch ./a.ts', 'vpx --watch ./a.ts'],
     ['tsx --env-file=.env --inspect ./a.ts', 'vpx --env-file=.env --inspect ./a.ts'],
     ['tsx --env-file .env ./a.ts arg', 'vpx --env-file .env ./a.ts arg'],
@@ -50,11 +51,7 @@ describe('rewriteTsxCommand', () => {
     expect(result.command).toBe(expected);
     expect(result.kept).toEqual([]);
     // Running the migration again changes nothing.
-    expect(rewriteTsxCommand(expected)).toEqual({
-      command: expected,
-      entries: [],
-      kept: [],
-    });
+    expect(rewriteTsxCommand(expected)).toEqual({ command: expected, kept: [] });
   });
 
   it.each([
@@ -64,21 +61,24 @@ describe('rewriteTsxCommand', () => {
     ['node ./a.js'],
     ['tsx-foo ./a.ts'],
   ])('leaves %s alone', (command) => {
-    expect(rewriteTsxCommand(command)).toEqual({ command, entries: [], kept: [] });
+    expect(rewriteTsxCommand(command)).toEqual({ command, kept: [] });
   });
 
   it.each([
     ["tsx -e 'console.log(1)'", '--eval or --print'],
     ['tsx --print 1', '--eval or --print'],
+    ['tsx -c ./a.js', '-c or --check'],
     ['tsx', 'REPL'],
     ['tsx watch', 'REPL'],
     ['tsx --test', 'list the test files'],
     ['tsx src/index', '`src/index` has no file extension'],
     ['tsx --watch-path=src ./a.ts', '--watch-path'],
+    ['tsx --watch_path=src ./a.ts', '--watch-path'],
     ['tsx ./a.ts | tee log', 'shell syntax'],
     ['tsx $ENTRY', 'shell syntax'],
     ['node --import tsx', 'REPL'],
     ['node --import tsx -e 1', '--eval or --print'],
+    ['node --import tsx --watch-path src ./a.ts', '--watch-path'],
     ["NODE_OPTIONS='--import tsx' node ./a.ts", 'does not rewrite this use of tsx'],
     ['pnpm dlx tsx ./a.ts', 'does not rewrite this use of tsx'],
   ])('keeps %s', (command, reason) => {
@@ -93,11 +93,54 @@ describe('rewriteTsxCommand', () => {
     expect(result.kept).toEqual([expect.stringContaining('--eval')]);
   });
 
-  it('reports the scripts the rewritten commands run', () => {
-    expect(
-      rewriteTsxCommand('tsx watch --include x.json src/a.ts && node --import tsx ./b.ts').entries,
-    ).toEqual(['src/a.ts', './b.ts']);
-    expect(rewriteTsxCommand('tsx --test ./a.test.ts').entries).toEqual([]);
+  describe('with the scripts it runs', () => {
+    let dir: string;
+
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vp-test-tsx-scripts-'));
+      fs.writeFileSync(path.join(dir, 'package.json'), '{}\n');
+      fs.writeFileSync(path.join(dir, 'esm.cts'), 'export const a = 1;\n');
+      fs.writeFileSync(path.join(dir, 'cjs.cts'), 'exports.a = 1;\n');
+      fs.writeFileSync(
+        path.join(dir, 'dirname.ts'),
+        "import fs from 'node:fs';\nfs.readdirSync(__dirname);\n",
+      );
+      fs.writeFileSync(
+        path.join(dir, 'plain.ts'),
+        "import fs from 'node:fs';\nfs.readdirSync('.');\n",
+      );
+    });
+
+    afterEach(() => {
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it.each([
+      ['tsx esm.cts', '`esm.cts` uses import or export'],
+      ['node --import tsx ./esm.cts', '`./esm.cts` uses import or export'],
+      ['tsx watch dirname.ts', '`dirname.ts` mixes import with __dirname'],
+      ['tsx --test plain.ts dirname.ts', '`dirname.ts` mixes import with __dirname'],
+      ['concurrently "tsx dirname.ts"', '`dirname.ts` mixes import with __dirname'],
+    ])('keeps %s', (command, reason) => {
+      expect(rewriteTsxCommand(command, dir)).toEqual({
+        command,
+        kept: [expect.stringContaining(reason)],
+      });
+    });
+
+    it.each([
+      ['tsx cjs.cts', 'vpx cjs.cts'],
+      ['tsx plain.ts', 'vpx plain.ts'],
+      ['tsx --test plain.ts', 'vpx --test plain.ts'],
+    ])('rewrites %s', (command, expected) => {
+      expect(rewriteTsxCommand(command, dir)).toEqual({ command: expected, kept: [] });
+    });
+
+    it('rewrites a script with __dirname in an ES module package', () => {
+      fs.writeFileSync(path.join(dir, 'package.json'), '{ "type": "module" }\n');
+      // `"type": "module"` already ran it as an ES module under tsx.
+      expect(rewriteTsxCommand('tsx dirname.ts', dir).command).toBe('vpx dirname.ts');
+    });
   });
 });
 
@@ -183,10 +226,22 @@ describe('migrateTsxToVpx', () => {
       '.husky/pre-commit still uses tsx',
     ],
     [
+      'a bash script',
+      'tools/release.bash',
+      'tsx scripts/release.ts\n',
+      'tools/release.bash still uses tsx',
+    ],
+    [
       'an extensionless shebang file',
       'bin/release',
       '#!/usr/bin/env tsx\nexport {};\n',
       'bin/release still uses tsx',
+    ],
+    [
+      'a nested package',
+      'examples/demo/package.json',
+      '{ "scripts": { "start": "tsx index.ts" } }\n',
+      'scripts in examples/demo/package.json still run tsx',
     ],
   ])('keeps the tsx dependency used by %s', (_, file, content, user) => {
     write('package.json', {
@@ -207,17 +262,87 @@ describe('migrateTsxToVpx', () => {
     expect(report.warnings).toContain(`Kept the tsx devDependency in package.json: ${user}.`);
   });
 
-  it('keeps tsx in a package that depends on it at runtime', () => {
-    write('package.json', {
-      scripts: { start: 'tsx src/server.ts' },
-      dependencies: { tsx: '^4.20.0' },
+  it.each(['dependencies', 'optionalDependencies', 'peerDependencies'])(
+    'keeps tsx in a package that lists it in %s',
+    (field) => {
+      write('package.json', {
+        scripts: { start: 'tsx src/server.ts' },
+        [field]: { tsx: '^4.20.0' },
+      });
+      const report = createMigrationReport();
+
+      expect(detectTsxProject(root)).toBe(false);
+      expect(migrateTsxToVpx(root, undefined, report).changed).toBe(false);
+      expect(readJson('package.json').scripts.start).toBe('tsx src/server.ts');
+      expect(report.warnings).toEqual([expect.stringContaining('Kept tsx in package.json')]);
+    },
+  );
+
+  it('keeps the tsx dependency of a workspace package used by its nested example', () => {
+    write('package.json', { private: true });
+    write('packages/a/package.json', {
+      scripts: { gen: 'tsx gen.ts' },
+      devDependencies: { tsx: '^4.20.0' },
     });
+    write('packages/a/examples/demo/main.ts', "import { tsImport } from 'tsx/esm/api';\n");
+    write('packages/a/examples/demo/package.json', { private: true });
+    const report = createMigrationReport();
+
+    migrateTsxToVpx(root, [{ name: 'a', path: 'packages/a' }], report);
+
+    expect(readJson('packages/a/package.json')).toEqual({
+      scripts: { gen: 'vpx gen.ts' },
+      devDependencies: { tsx: '^4.20.0' },
+    });
+    expect(report.warnings).toEqual([
+      'Kept the tsx devDependency in packages/a/package.json: packages/a/examples/demo/main.ts still uses tsx.',
+    ]);
+  });
+
+  it('detects tsx tasks in a lint-staged JSON file', () => {
+    write('package.json', { scripts: { prepare: 'husky' } });
+    write('.lintstagedrc.json', { '*.ts': 'tsx scripts/check.ts' });
+
+    expect(detectTsxProject(root)).toBe(true);
+    migrateTsxToVpx(root);
+    expect(readJson('.lintstagedrc.json')).toEqual({ '*.ts': 'vpx scripts/check.ts' });
+    expect(detectTsxProject(root)).toBe(false);
+  });
+
+  it('rewrites shebang options as it rewrites commands', () => {
+    write('package.json', { type: 'module' });
+    write('scripts/a.ts', '#!/usr/bin/env -S tsx --no-cache --tsconfig cli.json\nexport {};\n');
+    write('scripts/b.ts', '#!/usr/bin/env -S tsx -e x\nexport {};\n');
+    const report = createMigrationReport();
+
+    migrateTsxToVpx(root, undefined, report);
+
+    expect(read('scripts/a.ts')).toBe('#!/usr/bin/env -S vpx --tsconfig cli.json\nexport {};\n');
+    expect(read('scripts/b.ts')).toBe('#!/usr/bin/env -S tsx -e x\nexport {};\n');
+    expect(report.warnings).toEqual([
+      expect.stringContaining('Kept tsx in the shebang of scripts/b.ts: `vpx` does not run'),
+    ]);
+  });
+
+  it('keeps tsx for a script that would lose CommonJS globals under vpx', () => {
+    write('package.json', { scripts: { build: 'tsx scripts/build.ts' } });
+    write('scripts/build.ts', "import fs from 'node:fs';\nfs.readdirSync(__dirname);\n");
+    write('scripts/release.ts', '#!/usr/bin/env tsx\nimport fs from "node:fs";\nrequire("x");\n');
     const report = createMigrationReport();
 
     expect(detectTsxProject(root)).toBe(false);
-    expect(migrateTsxToVpx(root, undefined, report).changed).toBe(false);
-    expect(readJson('package.json').scripts.start).toBe('tsx src/server.ts');
-    expect(report.warnings).toEqual([expect.stringContaining('Kept tsx in package.json')]);
+    migrateTsxToVpx(root, undefined, report);
+
+    expect(readJson('package.json').scripts.build).toBe('tsx scripts/build.ts');
+    expect(read('scripts/release.ts')).toMatch(/^#!\/usr\/bin\/env tsx\n/);
+    expect(report.warnings).toEqual([
+      expect.stringContaining(
+        'Kept tsx in package.json scripts "build": `scripts/build.ts` mixes import with __dirname',
+      ),
+      expect.stringContaining(
+        'Kept tsx in the shebang of scripts/release.ts: `./release.ts` mixes import with __dirname',
+      ),
+    ]);
   });
 
   it('keeps the root tsx while a workspace package still uses it', () => {
@@ -238,18 +363,6 @@ describe('migrateTsxToVpx', () => {
     expect(report.warnings).toEqual([
       expect.stringContaining('Kept tsx in packages/b/package.json scripts "calc"'),
       'Kept the tsx devDependency in package.json: scripts in packages/b/package.json still run tsx.',
-    ]);
-  });
-
-  it('warns about CommonJS globals in an entry that now runs as an ES module', () => {
-    write('package.json', { scripts: { build: 'tsx scripts/build.ts' } });
-    write('scripts/build.ts', "import fs from 'node:fs';\nfs.readdirSync(__dirname);\n");
-    const report = createMigrationReport();
-
-    migrateTsxToVpx(root, undefined, report);
-
-    expect(report.warnings).toEqual([
-      expect.stringContaining('scripts/build.ts uses ES module syntax with __dirname'),
     ]);
   });
 });

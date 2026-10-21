@@ -185,10 +185,10 @@ For a script, the local bin and the global shim resolve the same loader and Node
 
 `vp migrate` rewrites tsx commands to `vpx` as an optional migration, like Prettier and tsup: always on a fresh project, and with `--full` on one already using Vite+ (`packages/cli/src/migration/migrator/tsx.ts`; behavior in [Migration Rules](../docs/guide/migrate-rules.md#tsx-to-vpx)).
 
-- It reads commands with the same literal-command parser as the other script rewrites and finds the script the way `vpx` does, with the shared value-taking option lists. Commands it cannot read, and forms `vpx` cannot run (eval, the REPL, `--test` without files, an entry without an extension), keep tsx with a warning.
+- It reads commands with the same literal-command parser as the other script rewrites and finds the script the way `vpx` does, with the shared value-taking option lists. Commands it cannot read, and forms `vpx` cannot run (eval, `--check`, the REPL, `--test` without files, an entry without an extension), keep tsx with a warning.
 - It has no Node.js check of its own: `vpx` needs the `engines.node` range of `vite-plus` (`SUPPORTED_NODE_RANGE` in `script-hooks.ts`, which a unit test keeps equal), and migration already upgrades incompatible runtime pins to that range for Vite+ itself.
-- The `tsx` devDependency goes only when no scripts, imports, shebangs, CI workflows, git hooks, or shell scripts use tsx anymore. A package that lists tsx in `dependencies` or `peerDependencies` keeps it, since `vpx` comes from a devDependency.
-- An entry that mixes `import` with `__dirname`, `__filename`, or `require()` in a package without `"type": "module"` gets a warning, since `vpx` runs it as an ES module.
+- The `tsx` devDependency goes only when no scripts, imports, shebangs, CI workflows, git hooks, or shell scripts use tsx anymore, including in nested packages that can resolve it. A package that lists tsx in `dependencies`, `optionalDependencies`, or `peerDependencies` keeps it, since `vpx` comes from a devDependency.
+- It reads the scripts a command runs and keeps tsx when `vpx` would fail on them: a `.cts` file with `import` or `export`, and a file that mixes `import` with `__dirname`, `__filename`, or `require()` in a package without `"type": "module"`. tsx compiles both to CommonJS; `vpx` rejects the first and runs the second as an ES module.
 
 ## Native Side
 

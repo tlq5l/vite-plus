@@ -6,7 +6,8 @@ import * as prompts from '@voidzero-dev/vite-plus-prompts';
 
 import { type LiteralCommandToken, parseLiteralCommands } from '../../../binding/index.js';
 import { type WorkspacePackage } from '../../types/index.ts';
-import { editJsonFile, isJsonFile } from '../../utils/json.ts';
+import { editJsonFile, isJsonFile, readJsonFile } from '../../utils/json.ts';
+import { readNearestPackageJson } from '../../utils/package.ts';
 import { displayRelative } from '../../utils/path.ts';
 import { cancelAndExit } from '../../utils/prompts.ts';
 import {
@@ -38,9 +39,9 @@ const LOADER_OPTIONS = new Set([
   '-r',
 ]);
 const TSX_LOADER = /^tsx(?:\/(?:esm|cjs))?$/;
-const EVAL_OPTIONS = new Set(['-e', '--eval', '-p', '--print', '-pe']);
 
 const KEEP_EVAL = '`vpx` does not run TypeScript passed to --eval or --print';
+const KEEP_CHECK = '`vpx` does not transform TypeScript for -c or --check';
 const KEEP_REPL = '`vpx` does not start a TypeScript REPL';
 const KEEP_TEST_GLOBS =
   '`--test` without files finds `.ts` tests with tsx globs; list the test files for `vpx --test`';
@@ -49,8 +50,25 @@ const KEEP_SHELL =
   'the command uses shell syntax that vp migrate does not rewrite, such as pipes, variables, or subshells';
 const KEEP_OTHER = 'vp migrate does not rewrite this use of tsx';
 
-// A tsx shebang that `vpx` can take over: `#!/usr/bin/env tsx`, `#!/usr/bin/env -S tsx --tsconfig x.json`.
-const TSX_ENV_SHEBANG = /^(#!\s*\S*\benv\s+(?:-S\s+)?)tsx(?=\s|$)/;
+// Options that `vpx` does not run as tsx does. `-c` is Node.js' `--check`, but `vpx -c`
+// is `--shell-mode`.
+const KEEP_OPTIONS = new Map([
+  ['-e', KEEP_EVAL],
+  ['--eval', KEEP_EVAL],
+  ['-p', KEEP_EVAL],
+  ['--print', KEEP_EVAL],
+  ['-pe', KEEP_EVAL],
+  ['-c', KEEP_CHECK],
+  ['--check', KEEP_CHECK],
+  ['-i', KEEP_REPL],
+  ['--interactive', KEEP_REPL],
+  ['--watch-path', KEEP_WATCH_PATH],
+]);
+
+// A tsx shebang `vpx` can take over: `#!/usr/bin/env tsx`, `#!/usr/bin/env -S tsx --tsconfig x.json`.
+const TSX_ENV_SHEBANG = /^(#!\s*\S*\benv\s+(?:-S\s+)?)(tsx(?=[ \t\r\n]|$)[^\r\n]*)/;
+// Stands for the file that the kernel appends to a shebang's command.
+const SHEBANG_ENTRY = './shebang.ts';
 // Any first line that runs tsx, including `#!/usr/local/bin/tsx`.
 const TSX_SHEBANG = /^#![^\n]*[\s/]tsx(?=\s|$)/;
 // In code: an import of tsx or a subpath such as `tsx/esm/api`, or a string that starts a tsx command.
@@ -67,6 +85,12 @@ const REFERENCE_EXTENSIONS: ReadonlySet<string> = new Set([
   '.yml',
   '.yaml',
   '.sh',
+  '.bash',
+  '.zsh',
+  '.fish',
+  '.ps1',
+  '.cmd',
+  '.bat',
 ]);
 // Lockfiles name tsx without running it.
 const LOCKFILES = new Set([
@@ -83,8 +107,6 @@ const COMMONJS_GLOBALS = /\b(?:__dirname|__filename)\b|\brequire\s*\(/;
 
 export interface TsxCommandRewrite {
   command: string;
-  /** The scripts the rewritten command runs, as written. */
-  entries: string[];
   /** Why tsx stays in part of the command. */
   kept: string[];
 }
@@ -95,43 +117,44 @@ interface Edit {
   text: string;
 }
 
+interface Rewrite {
+  command: string;
+  cwd?: string;
+  edits: Edit[];
+  kept: string[];
+}
+
 /**
  * Rewrite the tsx invocations in a command to `vpx`: `tsx a.ts` becomes `vpx a.ts`,
  * `tsx watch a.ts` becomes `vpx --watch a.ts` (`vpx watch` runs the npm package `watch`),
  * and `node --import tsx a.ts` becomes `vpx a.ts`. Package-manager wrappers such as
  * `npx tsx` go away with tsx, since `vpx` is a bin of vite-plus. A form `vpx` cannot run
- * stays as it is, with the reason in `kept`.
+ * stays as it is, with the reason in `kept`. With `cwd`, the directory the command runs
+ * in, the scripts it runs are checked for syntax `vpx` runs differently.
  */
-export function rewriteTsxCommand(command: string): TsxCommandRewrite {
-  const result: TsxCommandRewrite = { command, entries: [], kept: [] };
+export function rewriteTsxCommand(command: string, cwd?: string): TsxCommandRewrite {
   if (!TSX_COMMAND.test(command)) {
-    return result;
+    return { command, kept: [] };
   }
   const segments = parseLiteralCommands(command, true);
   if (!segments) {
-    result.kept.push(KEEP_SHELL);
-    return result;
+    return { command, kept: [KEEP_SHELL] };
   }
-  const edits: Edit[] = [];
+  const rewrite: Rewrite = { command, cwd, edits: [], kept: [] };
   for (const tokens of segments) {
-    rewriteSegment(command, tokens, edits, result);
+    rewriteSegment(rewrite, tokens);
   }
-  for (const edit of edits.toSorted((a, b) => b.start - a.start)) {
-    result.command =
-      result.command.slice(0, edit.start) + edit.text + result.command.slice(edit.end);
+  let rewritten = command;
+  for (const edit of rewrite.edits.toSorted((a, b) => b.start - a.start)) {
+    rewritten = rewritten.slice(0, edit.start) + edit.text + rewritten.slice(edit.end);
   }
-  if (!result.kept.length && TSX_COMMAND.test(result.command)) {
-    result.kept.push(KEEP_OTHER);
+  if (!rewrite.kept.length && TSX_COMMAND.test(rewritten)) {
+    rewrite.kept.push(KEEP_OTHER);
   }
-  return result;
+  return { command: rewritten, kept: rewrite.kept };
 }
 
-function rewriteSegment(
-  command: string,
-  tokens: LiteralCommandToken[],
-  edits: Edit[],
-  result: TsxCommandRewrite,
-): void {
+function rewriteSegment(rewrite: Rewrite, tokens: LiteralCommandToken[]): void {
   const values = tokens.map(({ value }) => value);
   // Environment assignments and cross-env stay in front of the command.
   let first = 0;
@@ -150,15 +173,24 @@ function rewriteSegment(
   }
   const start = first + getCommandStartIndex(values.slice(first));
   if (values[start] === 'tsx') {
-    rewriteTsx(tokens, first, start, edits, result);
+    rewriteTsx(rewrite, tokens, first, start);
   } else if (values[start] === 'node') {
-    rewriteNodeLoader(tokens, first, start, edits, result);
+    rewriteNodeLoader(rewrite, tokens, first, start);
   } else {
     // A command another tool runs, given as one quoted argument: `concurrently "tsx watch a.ts"`.
     for (const token of tokens.slice(start)) {
-      rewriteQuotedCommand(command, token, edits, result);
+      rewriteQuotedCommand(rewrite, token);
     }
   }
+}
+
+/**
+ * An option's name without `=value`. Node.js reads `_` as `-` in long option names, as
+ * in `--watch_path`, and so does `vpx`.
+ */
+function optionName(arg: string): string {
+  const name = arg.split('=', 1)[0];
+  return name.startsWith('--') ? `--${name.slice(2).replaceAll('_', '-')}` : name;
 }
 
 /** Remove `tokens[index]` with the space before it. */
@@ -166,61 +198,95 @@ function removal(tokens: LiteralCommandToken[], index: number): Edit {
   return { start: tokens[index - 1].end, end: tokens[index].end, text: '' };
 }
 
-function hasScriptExtension(entry: string): boolean {
-  return SCRIPT_EXTENSIONS.some((extension) => entry.endsWith(extension));
+/**
+ * Why `vpx` would fail on a script that tsx runs, judged from its source. tsx compiles ES
+ * module syntax to CommonJS in a `.cts` file and in a package without `"type": "module"`.
+ * `vpx` rejects it in a `.cts` file and runs the other files as ES modules, as Node.js
+ * does, so `__dirname`, `__filename`, and `require` are not defined.
+ */
+function scriptKeepReason(cwd: string | undefined, script: string): string | undefined {
+  if (cwd === undefined || !/\.(?:c?ts|tsx|jsx?)$/.test(script)) {
+    return undefined;
+  }
+  const file = path.resolve(cwd, script);
+  let source: string;
+  try {
+    source = fs.readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+  if (!ESM_SYNTAX.test(source)) {
+    return undefined;
+  }
+  if (script.endsWith('.cts')) {
+    return `\`${script}\` uses import or export, which \`vpx\` does not compile to CommonJS; rename it to .mts`;
+  }
+  if (
+    COMMONJS_GLOBALS.test(source) &&
+    readNearestPackageJson(path.dirname(file))?.type !== 'module'
+  ) {
+    return `\`${script}\` mixes import with __dirname, __filename, or require(), and \`vpx\` runs it as an ES module; use import.meta.dirname, import.meta.filename, or createRequire()`;
+  }
+  return undefined;
 }
 
-/** The reason to keep a run of `entry`, or undefined when `vpx` runs it. */
-function entryKeepReason(entry: string | undefined, test: boolean): string | undefined {
+/**
+ * Why `vpx` cannot run what tsx or `node --import tsx` runs: `positionals` are the entry
+ * and its arguments, or with `--test`, the test files.
+ */
+function runKeepReason(
+  cwd: string | undefined,
+  test: boolean,
+  positionals: readonly string[],
+): string | undefined {
+  const [entry] = positionals;
   if (entry === undefined) {
     return test ? KEEP_TEST_GLOBS : KEEP_REPL;
   }
   // tsx finds `src/index.ts` for `src/index`; `vpx` reads a name without an extension as a package.
-  if (!test && !hasScriptExtension(entry)) {
+  if (!test && !SCRIPT_EXTENSIONS.some((extension) => entry.endsWith(extension))) {
     return `\`${entry}\` has no file extension, which \`vpx\` needs to run it as a script`;
+  }
+  for (const script of test ? positionals.filter((value) => !value.startsWith('-')) : [entry]) {
+    const reason = scriptKeepReason(cwd, script);
+    if (reason) {
+      return reason;
+    }
   }
   return undefined;
 }
 
 function rewriteTsx(
+  rewrite: Rewrite,
   tokens: LiteralCommandToken[],
   first: number,
   start: number,
-  edits: Edit[],
-  result: TsxCommandRewrite,
 ): void {
   let index = start + 1;
   const watch = tokens[index]?.value === 'watch';
   if (watch) {
     index++;
   }
-  const local: Edit[] = [
+  const edits: Edit[] = [
     { start: tokens[first].start, end: tokens[index - 1].end, text: watch ? 'vpx --watch' : 'vpx' },
   ];
-  let entry: string | undefined;
+  let entryIndex = tokens.length;
   let test = false;
   for (; index < tokens.length; index++) {
     const { value } = tokens[index];
     if (value === '--' || !value.startsWith('-')) {
-      entry = value === '--' ? tokens[index + 1]?.value : value;
+      entryIndex = value === '--' ? index + 1 : index;
       break;
     }
-    const name = value.split('=', 1)[0];
+    const name = optionName(value);
     if (name === '--no-cache') {
       // `vpx` has no transform cache, and Node.js would reject the flag.
-      local.push(removal(tokens, index));
+      edits.push(removal(tokens, index));
       continue;
     }
-    if (EVAL_OPTIONS.has(name)) {
-      result.kept.push(KEEP_EVAL);
-      return;
-    }
-    if (name === '-i' || name === '--interactive') {
-      result.kept.push(KEEP_REPL);
-      return;
-    }
-    if (name === '--watch-path') {
-      result.kept.push(KEEP_WATCH_PATH);
+    const keep = KEEP_OPTIONS.get(name);
+    if (keep) {
+      rewrite.kept.push(keep);
       return;
     }
     test ||= name === '--test';
@@ -233,38 +299,38 @@ function rewriteTsx(
       index++;
     }
   }
-  const reason = entryKeepReason(entry, test);
+  const reason = runKeepReason(
+    rewrite.cwd,
+    test,
+    tokens.slice(entryIndex).map(({ value }) => value),
+  );
   if (reason) {
-    result.kept.push(reason);
+    rewrite.kept.push(reason);
     return;
   }
-  edits.push(...local);
-  if (!test) {
-    result.entries.push(entry!);
-  }
+  rewrite.edits.push(...edits);
 }
 
 function rewriteNodeLoader(
+  rewrite: Rewrite,
   tokens: LiteralCommandToken[],
   first: number,
   start: number,
-  edits: Edit[],
-  result: TsxCommandRewrite,
 ): void {
   const loaders: Edit[] = [];
-  let entry: string | undefined;
-  let evaluates = false;
+  let entryIndex = tokens.length;
+  let optionReason: string | undefined;
   let test = false;
   for (let index = start + 1; index < tokens.length; index++) {
     const { value } = tokens[index];
     if (value === '--' || !value.startsWith('-')) {
-      entry = value === '--' ? tokens[index + 1]?.value : value;
+      entryIndex = value === '--' ? index + 1 : index;
       break;
     }
-    const name = value.split('=', 1)[0];
+    const name = optionName(value);
     const inline = value.includes('=');
     if (LOADER_OPTIONS.has(name)) {
-      const loader = inline ? value.slice(name.length + 1) : tokens[index + 1]?.value;
+      const loader = inline ? value.slice(value.indexOf('=') + 1) : tokens[index + 1]?.value;
       if (loader !== undefined && TSX_LOADER.test(loader)) {
         loaders.push({ ...removal(tokens, index), end: tokens[inline ? index : index + 1].end });
       }
@@ -273,7 +339,7 @@ function rewriteNodeLoader(
       }
       continue;
     }
-    evaluates ||= EVAL_OPTIONS.has(name);
+    optionReason ??= KEEP_OPTIONS.get(name);
     test ||= name === '--test';
     if (!inline && NODE_OPTIONS_WITH_VALUE.has(name)) {
       index++;
@@ -282,77 +348,89 @@ function rewriteNodeLoader(
   if (!loaders.length) {
     return;
   }
-  const reason = evaluates ? KEEP_EVAL : entryKeepReason(entry, test);
+  const reason =
+    optionReason ??
+    runKeepReason(
+      rewrite.cwd,
+      test,
+      tokens.slice(entryIndex).map(({ value }) => value),
+    );
   if (reason) {
-    result.kept.push(reason);
+    rewrite.kept.push(reason);
     return;
   }
-  edits.push({ start: tokens[first].start, end: tokens[start].end, text: 'vpx' }, ...loaders);
-  if (!test) {
-    result.entries.push(entry!);
-  }
+  rewrite.edits.push(
+    { start: tokens[first].start, end: tokens[start].end, text: 'vpx' },
+    ...loaders,
+  );
 }
 
-function rewriteQuotedCommand(
-  command: string,
-  token: LiteralCommandToken,
-  edits: Edit[],
-  result: TsxCommandRewrite,
-): void {
-  const raw = command.slice(token.start, token.end);
+function rewriteQuotedCommand(rewrite: Rewrite, token: LiteralCommandToken): void {
+  const raw = rewrite.command.slice(token.start, token.end);
   const quote = raw[0];
   if ((quote !== '"' && quote !== "'") || raw.length < 2 || !raw.endsWith(quote)) {
     return;
   }
-  const inner = rewriteTsxCommand(token.value);
-  result.kept.push(...inner.kept);
-  if (inner.command === token.value || inner.command.includes(quote)) {
-    return;
+  const inner = rewriteTsxCommand(token.value, rewrite.cwd);
+  rewrite.kept.push(...inner.kept);
+  if (inner.command !== token.value && !inner.command.includes(quote)) {
+    rewrite.edits.push({
+      start: token.start,
+      end: token.end,
+      text: `${quote}${inner.command}${quote}`,
+    });
   }
-  result.entries.push(...inner.entries);
-  edits.push({ start: token.start, end: token.end, text: `${quote}${inner.command}${quote}` });
+}
+
+/** The commands in a scripts or lint-staged record. */
+function recordCommands(record: unknown): string[] {
+  if (!isPlainRecord(record)) {
+    return [];
+  }
+  return Object.values(record)
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .filter((command): command is string => typeof command === 'string');
 }
 
 /** The commands a package.json runs: its scripts and lint-staged tasks. */
 function packageCommands(pkg: Record<string, unknown>): string[] {
-  const commands: string[] = [];
-  for (const field of ['scripts', 'lint-staged']) {
-    const record = pkg[field];
-    if (!isPlainRecord(record)) {
-      continue;
-    }
-    for (const value of Object.values(record)) {
-      for (const command of Array.isArray(value) ? value : [value]) {
-        if (typeof command === 'string') {
-          commands.push(command);
-        }
-      }
-    }
-  }
-  return commands;
+  return [...recordCommands(pkg.scripts), ...recordCommands(pkg['lint-staged'])];
+}
+
+function lintStagedJsonFiles(dir: string): string[] {
+  return LINT_STAGED_JSON_CONFIG_FILES.map((name) => path.join(dir, name)).filter(
+    (file) => fs.existsSync(file) && isJsonFile(file),
+  );
 }
 
 /**
- * A package that ships tsx as a dependency or peer dependency keeps it: its published
- * code or production scripts can need tsx, and `vpx` comes from a devDependency.
+ * A package that lists tsx outside devDependencies keeps it: its published code or
+ * production scripts can need tsx, and `vpx` comes from the vite-plus devDependency.
  */
 function ownsTsxAtRuntime(pkg: DependencyBag): boolean {
-  return pkg.dependencies?.tsx !== undefined || pkg.peerDependencies?.tsx !== undefined;
+  return (
+    pkg.dependencies?.tsx !== undefined ||
+    pkg.optionalDependencies?.tsx !== undefined ||
+    pkg.peerDependencies?.tsx !== undefined
+  );
 }
 
 function packageDirs(rootDir: string, packages?: readonly WorkspacePackage[]): string[] {
   return [rootDir, ...(packages ?? []).map((pkg) => path.join(rootDir, pkg.path))];
 }
 
-/** Whether a package.json script or lint-staged task runs tsx in a form `vpx` replaces. */
+/** Whether a script or lint-staged task runs tsx in a form `vpx` replaces. */
 export function detectTsxProject(rootDir: string, packages?: readonly WorkspacePackage[]): boolean {
   return packageDirs(rootDir, packages).some((dir) => {
     const pkg = readPackageJsonIfExists(path.join(dir, 'package.json'));
-    return (
-      pkg !== undefined &&
-      !ownsTsxAtRuntime(pkg) &&
-      packageCommands(pkg).some((command) => rewriteTsxCommand(command).command !== command)
-    );
+    if (!pkg || ownsTsxAtRuntime(pkg)) {
+      return false;
+    }
+    const commands = [
+      ...packageCommands(pkg),
+      ...lintStagedJsonFiles(dir).flatMap((file) => recordCommands(readJsonFile(file))),
+    ];
+    return commands.some((command) => rewriteTsxCommand(command, dir).command !== command);
   });
 }
 
@@ -360,7 +438,7 @@ export function detectTsxProject(rootDir: string, packages?: readonly WorkspaceP
 function rewriteCommandRecord(
   record: Record<string, unknown>,
   label: string,
-  entries: string[],
+  cwd: string,
   report?: MigrationReport,
 ): boolean {
   let edited = false;
@@ -370,8 +448,7 @@ function rewriteCommandRecord(
       if (typeof command !== 'string') {
         return command;
       }
-      const result = rewriteTsxCommand(command);
-      entries.push(...result.entries);
+      const result = rewriteTsxCommand(command, cwd);
       for (const reason of result.kept) {
         warnMigration(`Kept tsx in ${label} "${key}": ${reason}.`, report);
       }
@@ -386,24 +463,36 @@ function rewriteCommandRecord(
 }
 
 /** Point `#!/usr/bin/env tsx` shebangs of a package's script files at `vpx`. */
-function rewriteTsxShebangs(dir: string): string[] {
-  const files: string[] = [];
+function rewriteTsxShebangs(dir: string, report?: MigrationReport): boolean {
+  let changed = false;
   // The callback never reports a match, so the walk visits every file.
   sourceTreeMatches(dir, (content, file) => {
-    if (TSX_ENV_SHEBANG.test(content)) {
-      fs.writeFileSync(file, content.replace(TSX_ENV_SHEBANG, '$1vpx'));
-      files.push(file);
+    const match = TSX_ENV_SHEBANG.exec(content);
+    if (!match) {
+      return false;
     }
+    const [line, prefix, command] = match;
+    // The kernel runs the shebang's command with the file appended.
+    const result = rewriteTsxCommand(`${command.trimEnd()} ${SHEBANG_ENTRY}`);
+    const reason =
+      result.kept[0] ?? scriptKeepReason(path.dirname(file), `./${path.basename(file)}`);
+    if (reason) {
+      warnMigration(`Kept tsx in the shebang of ${displayRelative(file)}: ${reason}.`, report);
+      return false;
+    }
+    const vpxCommand = result.command.slice(0, -` ${SHEBANG_ENTRY}`.length);
+    fs.writeFileSync(file, `${prefix}${vpxCommand}${content.slice(line.length)}`);
+    changed = true;
     return false;
   });
-  return files;
+  return changed;
 }
 
 /**
- * The first file under `dir` that still runs or imports tsx, or undefined. For the
- * workspace root, the scan crosses into packages, which can use the root's tsx.
+ * The first file under `dir` that still runs or imports tsx, or undefined. The scan
+ * crosses into nested packages, which can resolve this package's tsx.
  */
-function findTsxReference(dir: string, crossPackageBoundaries: boolean): string | undefined {
+function findTsxReference(dir: string): string | undefined {
   let found: string | undefined;
   sourceTreeMatches(
     dir,
@@ -423,7 +512,7 @@ function findTsxReference(dir: string, crossPackageBoundaries: boolean): string 
       return true;
     },
     {
-      crossPackageBoundaries,
+      crossPackageBoundaries: true,
       extensions: REFERENCE_EXTENSIONS,
       includeExtensionless: true,
       includePackageReferences: true,
@@ -437,38 +526,6 @@ function findTsxReference(dir: string, crossPackageBoundaries: boolean): string 
     },
   );
   return found;
-}
-
-/**
- * tsx runs a file with ES module syntax as CommonJS in a package without
- * `"type": "module"`; `vpx`, like Node.js, runs it as an ES module, which has no
- * `__dirname`, `__filename`, or `require`. Check the scripts the commands now run.
- */
-function warnCommonJsEntries(dir: string, entries: readonly string[], report?: MigrationReport) {
-  const pkg = readPackageJsonIfExists(path.join(dir, 'package.json')) as
-    | { type?: unknown }
-    | undefined;
-  if (pkg?.type === 'module') {
-    return;
-  }
-  for (const entry of new Set(entries)) {
-    if (!/\.(?:ts|tsx|js|jsx)$/.test(entry)) {
-      continue;
-    }
-    const file = path.resolve(dir, entry);
-    let source: string;
-    try {
-      source = fs.readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
-    if (ESM_SYNTAX.test(source) && COMMONJS_GLOBALS.test(source)) {
-      warnMigration(
-        `${displayRelative(file)} uses ES module syntax with __dirname, __filename, or require() in a package without "type": "module". tsx ran it as CommonJS, and vpx runs it as an ES module, as Node.js does; use import.meta.dirname, import.meta.filename, or createRequire().`,
-        report,
-      );
-    }
-  }
 }
 
 /**
@@ -492,26 +549,20 @@ export function migrateTsxToVpx(
     if (ownsTsxAtRuntime(pkg)) {
       if (packageCommands(pkg).some((c) => TSX_COMMAND.test(c))) {
         warnMigration(
-          `Kept tsx in ${displayRelative(packageJsonPath)}: it is a dependency or peer dependency there, and \`vpx\` comes from the vite-plus devDependency.`,
+          `Kept tsx in ${displayRelative(packageJsonPath)}: it is listed in dependencies, optionalDependencies, or peerDependencies there, and \`vpx\` comes from the vite-plus devDependency.`,
           report,
         );
       }
       continue;
     }
     migrated.push(dir);
-    const entries: string[] = [];
     editJsonFile(packageJsonPath, (json) => {
       let edited = false;
       for (const field of ['scripts', 'lint-staged']) {
         const record = json[field];
         if (
           isPlainRecord(record) &&
-          rewriteCommandRecord(
-            record,
-            `${displayRelative(packageJsonPath)} ${field}`,
-            entries,
-            report,
-          )
+          rewriteCommandRecord(record, `${displayRelative(packageJsonPath)} ${field}`, dir, report)
         ) {
           edited = true;
         }
@@ -519,22 +570,16 @@ export function migrateTsxToVpx(
       changed ||= edited;
       return edited ? json : undefined;
     });
-    for (const name of LINT_STAGED_JSON_CONFIG_FILES) {
-      const file = path.join(dir, name);
-      if (!fs.existsSync(file) || !isJsonFile(file)) {
-        continue;
-      }
+    for (const file of lintStagedJsonFiles(dir)) {
       editJsonFile(file, (config) => {
-        const edited = rewriteCommandRecord(config, displayRelative(file), entries, report);
+        const edited = rewriteCommandRecord(config, displayRelative(file), dir, report);
         changed ||= edited;
         return edited ? config : undefined;
       });
     }
-    for (const file of rewriteTsxShebangs(dir)) {
-      entries.push(path.relative(dir, file));
+    if (rewriteTsxShebangs(dir, report)) {
       changed = true;
     }
-    warnCommonJsEntries(dir, entries, report);
   }
 
   // Remove the dependency once every package is rewritten: the root's tsx can serve
@@ -545,7 +590,7 @@ export function migrateTsxToVpx(
     if (readPackageJsonIfExists(packageJsonPath)?.devDependencies?.tsx === undefined) {
       continue;
     }
-    const reference = findTsxReference(dir, dir === rootDir);
+    const reference = findTsxReference(dir);
     if (reference) {
       const user =
         path.basename(reference) === 'package.json'

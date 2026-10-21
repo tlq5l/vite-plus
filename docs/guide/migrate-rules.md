@@ -289,11 +289,11 @@ When a `package.json` script or lint-staged task runs [tsx](https://tsx.is), mig
 
 `tsx watch` becomes `vpx --watch`, never `vpx watch`, which runs the npm package `watch`. Node.js options and tsx watch options keep their order, and `--no-cache` is dropped. `vpx` needs the same Node.js versions as Vite+ itself, and migration already upgrades incompatible runtime pins to them (see [Vitest 5](/guide/vitest-v5)).
 
-Migration keeps tsx, with a warning, for a command `vpx` cannot run: `--eval` or `--print` code, the REPL, `--test` without files, an entry without a file extension, and commands with pipes, variables, or subshells. It also keeps tsx in a package that lists it in `dependencies` or `peerDependencies`, since `vpx` comes from the `vite-plus` devDependency.
+Migration keeps tsx, with a warning, for a command `vpx` cannot run: `--eval`, `--print`, or `--check`, the REPL, `--test` without files, an entry without a file extension, and commands with pipes, variables, or subshells. It also reads the scripts a command runs and keeps tsx when `vpx` would fail on them, because tsx compiles their ES module syntax to CommonJS: a `.cts` file with `import` or `export`, and a file that mixes `import` with `__dirname`, `__filename`, or `require()` in a package without `"type": "module"`. A package that lists tsx in `dependencies`, `optionalDependencies`, or `peerDependencies` keeps it too, since `vpx` comes from the `vite-plus` devDependency.
 
 Migration removes the `tsx` devDependency only when nothing uses tsx anymore: no kept script, no import of `tsx` or its subpaths such as `tsx/esm/api`, no shebang, and no tsx command in CI workflows, git hooks, or shell scripts. The root's dependency stays while any workspace package still uses tsx. When tsx stays, the warning names a file that still uses it.
 
-A script that uses `import` and `__dirname`, `__filename`, or `require()` in a package without `"type": "module"` gets a warning: tsx ran it as CommonJS, and `vpx` runs it as an ES module. See [Coming from tsx](/guide/vpx#coming-from-tsx) for the other differences.
+See [Coming from tsx](/guide/vpx#coming-from-tsx) for the other differences.
 
 ## Continuous Integration Rules
 
