@@ -109,6 +109,13 @@ describe('rewriteTsxCommand', () => {
         path.join(dir, 'plain.ts'),
         "import fs from 'node:fs';\nfs.readdirSync('.');\n",
       );
+      // Only `cd tools` finds this script.
+      fs.mkdirSync(path.join(dir, 'tools'));
+      fs.writeFileSync(
+        path.join(dir, 'tools/only.ts'),
+        "import fs from 'node:fs';\nfs.readdirSync(__dirname);\n",
+      );
+      fs.writeFileSync(path.join(dir, 'tools/plain.ts'), 'export {};\n');
     });
 
     afterEach(() => {
@@ -121,6 +128,8 @@ describe('rewriteTsxCommand', () => {
       ['tsx watch dirname.ts', '`dirname.ts` mixes import with __dirname'],
       ['tsx --test plain.ts dirname.ts', '`dirname.ts` mixes import with __dirname'],
       ['concurrently "tsx dirname.ts"', '`dirname.ts` mixes import with __dirname'],
+      ['cd tools && tsx only.ts', '`only.ts` mixes import with __dirname'],
+      ['pushd tools && tsx plain.ts', 'changes the directory'],
     ])('keeps %s', (command, reason) => {
       expect(rewriteTsxCommand(command, dir)).toEqual({
         command,
@@ -132,6 +141,7 @@ describe('rewriteTsxCommand', () => {
       ['tsx cjs.cts', 'vpx cjs.cts'],
       ['tsx plain.ts', 'vpx plain.ts'],
       ['tsx --test plain.ts', 'vpx --test plain.ts'],
+      ['cd tools && tsx plain.ts', 'cd tools && vpx plain.ts'],
     ])('rewrites %s', (command, expected) => {
       expect(rewriteTsxCommand(command, dir)).toEqual({ command: expected, kept: [] });
     });
@@ -243,6 +253,12 @@ describe('migrateTsxToVpx', () => {
       '{ "scripts": { "start": "tsx index.ts" } }\n',
       'scripts in examples/demo/package.json still run tsx',
     ],
+    [
+      'build output',
+      'dist/launcher.js',
+      "import { register } from 'tsx/esm/api';\n",
+      'dist/launcher.js still uses tsx',
+    ],
   ])('keeps the tsx dependency used by %s', (_, file, content, user) => {
     write('package.json', {
       scripts: {
@@ -296,6 +312,21 @@ describe('migrateTsxToVpx', () => {
     });
     expect(report.warnings).toEqual([
       'Kept the tsx devDependency in packages/a/package.json: packages/a/examples/demo/main.ts still uses tsx.',
+    ]);
+  });
+
+  it('keeps the tsx dependency behind a package.json imports alias', () => {
+    write('package.json', {
+      imports: { '#loader': { node: 'tsx/esm/api' } },
+      scripts: { dev: 'tsx watch src/server.ts' },
+      devDependencies: { tsx: '^4.20.0' },
+    });
+    const report = createMigrationReport();
+
+    expect(migrateTsxToVpx(root, undefined, report).dependencyRemoved).toBe(false);
+    expect(readJson('package.json').scripts.dev).toBe('vpx --watch src/server.ts');
+    expect(report.warnings).toEqual([
+      'Kept the tsx devDependency in package.json: imports in package.json still map to tsx.',
     ]);
   });
 

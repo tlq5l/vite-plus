@@ -291,7 +291,7 @@ When a `package.json` script or lint-staged task runs [tsx](https://tsx.is), mig
 
 Migration keeps tsx, with a warning, for a command `vpx` cannot run: `--eval`, `--print`, or `--check`, the REPL, `--test` without files, an entry without a file extension, and commands with pipes, variables, or subshells. It also reads the scripts a command runs and keeps tsx when `vpx` would fail on them, because tsx compiles their ES module syntax to CommonJS: a `.cts` file with `import` or `export`, and a file that mixes `import` with `__dirname`, `__filename`, or `require()` in a package without `"type": "module"`. A package that lists tsx in `dependencies`, `optionalDependencies`, or `peerDependencies` keeps it too, since `vpx` comes from the `vite-plus` devDependency.
 
-Migration removes the `tsx` devDependency only when nothing uses tsx anymore: no kept script, no import of `tsx` or its subpaths such as `tsx/esm/api`, no shebang, and no tsx command in CI workflows, git hooks, or shell scripts. The root's dependency stays while any workspace package still uses tsx. When tsx stays, the warning names a file that still uses it.
+Migration removes the `tsx` devDependency only when nothing uses tsx anymore: no kept script, no import of `tsx` or its subpaths such as `tsx/esm/api` (in source, build output, or a `package.json` `imports` alias), no shebang, and no tsx command in CI workflows, git hooks, or shell scripts. The root's dependency stays while any workspace package still uses tsx, and a package's dependency stays while a nested package under it does. When tsx stays, the warning names what still uses it.
 
 See [Coming from tsx](/guide/vpx#coming-from-tsx) for the other differences.
 

@@ -13,6 +13,7 @@ import {
   packageOwnsOxlintApi,
   PLAYWRIGHT_PROVIDER,
   readPackageJsonIfExists,
+  RETENTION_SCAN_SKIP_DIRS,
   type DependencyBag,
 } from './shared.ts';
 
@@ -167,10 +168,6 @@ const VITEST_SCAN_SKIP_DIRS = new Set([
   '.cache',
   '.yarn',
 ]);
-
-// Built plugins can still load the original API after migration. Skip installed
-// source and VCS metadata; dependency peer contracts are checked separately.
-const OXLINT_RETENTION_SKIP_DIRS = new Set(['node_modules', '.git', '.hg', '.svn']);
 
 /**
  * Detect whether a package uses vitest's browser mode.
@@ -379,7 +376,7 @@ export function sourceTreeReferencesOxlintPluginsPackage(
         retainUnknownPeers: originalDependencies.has(dir),
         originalDependencyNames: originalDependencies.get(dir),
       }),
-    skipDirs: OXLINT_RETENTION_SKIP_DIRS,
+    skipDirs: RETENTION_SCAN_SKIP_DIRS,
   });
 }
 

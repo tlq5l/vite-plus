@@ -23,6 +23,8 @@ import {
   isPlainRecord,
   LINT_STAGED_JSON_CONFIG_FILES,
   readPackageJsonIfExists,
+  RETENTION_SCAN_SKIP_DIRS,
+  SHELL_STATE_COMMANDS,
   warnMigration,
 } from './shared.ts';
 
@@ -49,6 +51,7 @@ const KEEP_WATCH_PATH = '`--watch-path` has no `vpx` equivalent; use `--include`
 const KEEP_SHELL =
   'the command uses shell syntax that vp migrate does not rewrite, such as pipes, variables, or subshells';
 const KEEP_OTHER = 'vp migrate does not rewrite this use of tsx';
+const KEEP_CWD = 'an earlier command changes the directory in a way vp migrate does not follow';
 
 // Options that `vpx` does not run as tsx does. `-c` is Node.js' `--check`, but `vpx -c`
 // is `--shell-mode`.
@@ -104,6 +107,8 @@ const LOCKFILES = new Set([
 // ES module syntax, and the CommonJS globals an ES module does not have.
 const ESM_SYNTAX = /^\s*(?:import\s*[\w*{'"]|export\s)|\bimport\.meta\b/m;
 const COMMONJS_GLOBALS = /\b(?:__dirname|__filename)\b|\brequire\s*\(/;
+// A `package.json#imports` target in tsx, such as `"#tsx": "tsx/esm/api"`.
+const TSX_IMPORT_TARGET = /"tsx(?:\/[^"]*)?"/;
 
 export interface TsxCommandRewrite {
   command: string;
@@ -119,7 +124,8 @@ interface Edit {
 
 interface Rewrite {
   command: string;
-  cwd?: string;
+  /** The directory the next segment runs in; null once a command moved it out of sight. */
+  cwd?: string | null;
   edits: Edit[];
   kept: string[];
 }
@@ -132,7 +138,7 @@ interface Rewrite {
  * stays as it is, with the reason in `kept`. With `cwd`, the directory the command runs
  * in, the scripts it runs are checked for syntax `vpx` runs differently.
  */
-export function rewriteTsxCommand(command: string, cwd?: string): TsxCommandRewrite {
+export function rewriteTsxCommand(command: string, cwd?: string | null): TsxCommandRewrite {
   if (!TSX_COMMAND.test(command)) {
     return { command, kept: [] };
   }
@@ -142,6 +148,16 @@ export function rewriteTsxCommand(command: string, cwd?: string): TsxCommandRewr
   }
   const rewrite: Rewrite = { command, cwd, edits: [], kept: [] };
   for (const tokens of segments) {
+    const [name, ...args] = tokens.map(({ value }) => value);
+    if (SHELL_STATE_COMMANDS.includes(name)) {
+      // Follow `cd <dir>`; after another directory change, scripts cannot be found.
+      if (name === 'cd' && args.length === 1 && !/^[-~]/.test(args[0])) {
+        rewrite.cwd &&= path.resolve(rewrite.cwd, args[0]);
+      } else if (!['export', 'set', 'unset'].includes(name) && rewrite.cwd !== undefined) {
+        rewrite.cwd = null;
+      }
+      continue;
+    }
     rewriteSegment(rewrite, tokens);
   }
   let rewritten = command;
@@ -235,7 +251,7 @@ function scriptKeepReason(cwd: string | undefined, script: string): string | und
  * and its arguments, or with `--test`, the test files.
  */
 function runKeepReason(
-  cwd: string | undefined,
+  cwd: string | null | undefined,
   test: boolean,
   positionals: readonly string[],
 ): string | undefined {
@@ -246,6 +262,9 @@ function runKeepReason(
   // tsx finds `src/index.ts` for `src/index`; `vpx` reads a name without an extension as a package.
   if (!test && !SCRIPT_EXTENSIONS.some((extension) => entry.endsWith(extension))) {
     return `\`${entry}\` has no file extension, which \`vpx\` needs to run it as a script`;
+  }
+  if (cwd === null) {
+    return KEEP_CWD;
   }
   for (const script of test ? positionals.filter((value) => !value.startsWith('-')) : [entry]) {
     const reason = scriptKeepReason(cwd, script);
@@ -489,10 +508,11 @@ function rewriteTsxShebangs(dir: string, report?: MigrationReport): boolean {
 }
 
 /**
- * The first file under `dir` that still runs or imports tsx, or undefined. The scan
- * crosses into nested packages, which can resolve this package's tsx.
+ * What still runs or imports tsx under `dir`, or undefined. The scan crosses into nested
+ * packages, which can resolve this package's tsx, and reads build output, which can
+ * still load it.
  */
-function findTsxReference(dir: string): string | undefined {
+function findTsxUse(dir: string): string | undefined {
   let found: string | undefined;
   sourceTreeMatches(
     dir,
@@ -508,7 +528,7 @@ function findTsxReference(dir: string): string | undefined {
       ) {
         return false;
       }
-      found = file;
+      found = `${displayRelative(file)} still uses tsx`;
       return true;
     },
     {
@@ -517,12 +537,17 @@ function findTsxReference(dir: string): string | undefined {
       includeExtensionless: true,
       includePackageReferences: true,
       matchesPackage: (packageDir, pkg) => {
-        if (!packageCommands(pkg).some((c) => TSX_COMMAND.test(c))) {
-          return false;
+        const file = displayRelative(path.join(packageDir, 'package.json'));
+        if (packageCommands(pkg).some((c) => TSX_COMMAND.test(c))) {
+          found = `scripts in ${file} still run tsx`;
+        } else if (
+          TSX_IMPORT_TARGET.test(JSON.stringify((pkg as { imports?: unknown }).imports ?? null))
+        ) {
+          found = `imports in ${file} still map to tsx`;
         }
-        found = path.join(packageDir, 'package.json');
-        return true;
+        return found !== undefined;
       },
+      skipDirs: RETENTION_SCAN_SKIP_DIRS,
     },
   );
   return found;
@@ -590,14 +615,10 @@ export function migrateTsxToVpx(
     if (readPackageJsonIfExists(packageJsonPath)?.devDependencies?.tsx === undefined) {
       continue;
     }
-    const reference = findTsxReference(dir);
-    if (reference) {
-      const user =
-        path.basename(reference) === 'package.json'
-          ? `scripts in ${displayRelative(reference)} still run tsx`
-          : `${displayRelative(reference)} still uses tsx`;
+    const use = findTsxUse(dir);
+    if (use) {
       warnMigration(
-        `Kept the tsx devDependency in ${displayRelative(packageJsonPath)}: ${user}.`,
+        `Kept the tsx devDependency in ${displayRelative(packageJsonPath)}: ${use}.`,
         report,
       );
       continue;
