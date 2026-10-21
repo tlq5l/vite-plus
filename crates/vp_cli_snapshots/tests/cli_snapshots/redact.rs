@@ -71,6 +71,24 @@ static THREAD_RE: LazyLock<regex::Regex> =
 // thread counts.
 static CLEANING_COUNT_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"Cleaning \d+ files").unwrap());
+const TS7_WARNING: &str = "warn: TypeScript 7.0 does not yet have a stable API and is experimental. Some options will be unavailable.";
+// Task-cache replay merges stdout and stderr. Only the known compiler warning
+// can move within pack's startup messages; other diagnostics delimit the block.
+static PACK_STARTUP_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(&format!(
+        r"(?m)(?:^(?:ℹ (?:entry: [^\n]*|tsconfig: [^\n]*|Build start|Emit types with typescript@[^\n]*)|{})(?:\n|$))+",
+        regex::escape(TS7_WARNING)
+    ))
+    .unwrap()
+});
+// tsup's JS and declaration workers report progress concurrently. Recognize
+// only progress lines, after duration/size redaction, and keep diagnostics out.
+static TSUP_PROGRESS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?m)(?:^(?:CJS|ESM|DTS) (?:Build start|⚡️ Build success in <duration>|[^\n]+ <size> (?:B|kB|KB|KiB|MB|MiB|GB|GiB))(?:\n|$))+",
+    )
+    .unwrap()
+});
 // Oxlint's summary line prints its active rule count ("with 95 rules"), which
 // grows with every bundled oxlint upgrade; mask it like thread counts so lint
 // baselines survive routine dep bumps.
@@ -740,6 +758,62 @@ pub fn redact_output(
     // screens have none, so skip the split/rejoin allocation entirely then.
     if output.contains("  ! ") {
         output = sort_diagnostic_blocks(&output);
+    }
+
+    if output.contains(TS7_WARNING) {
+        output = PACK_STARTUP_RE
+            .replace_all(&output, |caps: &regex::Captures| {
+                let lines: Vec<_> = caps[0].split('\n').collect();
+                let warnings = lines.iter().filter(|&&line| line == TS7_WARNING).count();
+                if warnings == 0
+                    || lines.iter().filter(|&&line| line == "ℹ Build start").count() != 1
+                    || lines.iter().filter(|line| line.starts_with("ℹ entry: ")).count() != 1
+                {
+                    return caps[0].to_owned();
+                }
+                let mut ordered = Vec::with_capacity(lines.len());
+                for line in lines {
+                    if line != TS7_WARNING {
+                        ordered.push(line);
+                        if line == "ℹ Build start" {
+                            ordered.extend(std::iter::repeat_n(TS7_WARNING, warnings));
+                        }
+                    }
+                }
+                ordered.join("\n")
+            })
+            .into_owned();
+    }
+
+    if output.contains("DTS Build start") {
+        output = TSUP_PROGRESS_RE
+            .replace_all(&output, |caps: &regex::Captures| {
+                let mut lines: Vec<_> = caps[0].split('\n').collect();
+                for phase in ["CJS ", "ESM ", "DTS "] {
+                    let progress: Vec<_> =
+                        lines.iter().filter_map(|line| line.strip_prefix(phase)).collect();
+                    if !progress.is_empty()
+                        && (progress.iter().filter(|&&line| line == "Build start").count() != 1
+                            || progress
+                                .iter()
+                                .filter(|&&line| line == "⚡️ Build success in <duration>")
+                                .count()
+                                != 1)
+                    {
+                        return caps[0].to_owned();
+                    }
+                }
+                // Stable sorting preserves every line and each worker's order.
+                // An empty final element preserves the original trailing newline.
+                lines.sort_by_key(|line| {
+                    ["CJS ", "ESM ", "DTS "]
+                        .iter()
+                        .position(|phase| line.starts_with(phase))
+                        .unwrap_or(3)
+                });
+                lines.join("\n")
+            })
+            .into_owned();
     }
 
     output
