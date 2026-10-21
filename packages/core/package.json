@@ -141,6 +141,7 @@
     "tinyglobby": "^0.2.15",
     "tree-kill": "^1.2.2",
     "tsdown": "catalog:",
+    "typescript": "catalog:",
     "vite": "workspace:*"
   },
   "peerDependencies": {

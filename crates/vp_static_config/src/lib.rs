@@ -5,10 +5,12 @@
 //! config like `run` without needing a Node.js runtime.
 
 use oxc_allocator::Allocator;
-use oxc_ast::StaticPropertyName;
-use oxc_ast::ast::{
-    BindingPattern, Expression, ImportDeclarationSpecifier, ImportOrExportKind, ObjectPropertyKind,
-    Program, Statement, VariableDeclarationKind,
+use oxc_ast::{
+    StaticPropertyName,
+    ast::{
+        BindingPattern, Expression, ImportDeclarationSpecifier, ImportOrExportKind,
+        ObjectPropertyKind, Program, Statement, VariableDeclarationKind,
+    },
 };
 use oxc_parser::Parser;
 use oxc_span::SourceType;
