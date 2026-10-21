@@ -544,12 +544,12 @@ export function mergePnpmWorkspaces(
   // Vite declares its compiler in the root package.json, outside its catalog.
   // Follow that range exactly, even when Rolldown still uses an older major.
   const typescriptSpecifier = vitePackage.devDependencies?.typescript;
-  const typescriptVersion =
+  const typescriptRange =
     typescriptSpecifier === 'catalog:' ? rolldownVite.catalog?.typescript : typescriptSpecifier;
-  if (!typescriptVersion || !verkit.normalizeRange(typescriptVersion)) {
+  if (!typescriptRange || !verkit.normalizeRange(typescriptRange)) {
     throw new Error('Vite must declare a valid TypeScript devDependency range');
   }
-  const catalog: Record<string, string> = { typescript: typescriptVersion };
+  const catalog: Record<string, string> = { typescript: typescriptRange };
   for (const workspace of [main, rolldown, rolldownVite]) {
     for (const [pkg, version] of Object.entries(workspace.catalog || {})) {
       if (pkg === 'typescript') {
@@ -595,19 +595,19 @@ export function mergePnpmWorkspaces(
     );
 
   // Vite's language-tooling overrides keep legacy compiler API consumers working.
-  for (const [selector, version] of Object.entries(rolldownVite.overrides ?? {})) {
-    if (/>typescript(?:@|$)/.test(selector)) {
-      result.overrides = { ...result.overrides, [selector]: version };
-    }
-  }
+  const typescriptOverrides = Object.fromEntries(
+    Object.entries(rolldownVite.overrides ?? {}).filter(([selector]) =>
+      />typescript(?:@|$)/.test(selector),
+    ),
+  );
 
   // Rolldown's build uses the compiler API from its own TypeScript range.
   // Its catalog reference must not pick up Vite's compiler after the merge.
   if (rolldown.catalog?.typescript) {
-    result.overrides = {
-      ...result.overrides,
-      'rolldown>typescript': rolldown.catalog.typescript,
-    };
+    typescriptOverrides['rolldown>typescript'] = rolldown.catalog.typescript;
+  }
+  if (Object.keys(typescriptOverrides).length > 0) {
+    result.overrides = { ...result.overrides, ...typescriptOverrides };
   }
 
   // Merge minimumReleaseAgeExclude
