@@ -3,6 +3,7 @@ import path from 'node:path';
 import { styleText } from 'node:util';
 
 import * as prompts from '@voidzero-dev/vite-plus-prompts';
+import { parse as parseJsonc } from 'jsonc-parser';
 
 import { type LiteralCommandToken, parseLiteralCommands } from '../../../binding/index.js';
 import { type WorkspacePackage } from '../../types/index.ts';
@@ -74,14 +75,45 @@ const TSX_ENV_SHEBANG = /^(#!\s*\S*\benv\s+(?:-S\s+)?)(tsx(?=[ \t\r\n]|$)[^\r\n]
 const SHEBANG_ENTRY = './shebang.ts';
 // Any first line that runs tsx, including `#!/usr/local/bin/tsx`.
 const TSX_SHEBANG = /^#![^\n]*[\s/]tsx(?=\s|$)/;
+// tsx loaded into Node.js by a flag, as in `--import=tsx` or `-r tsx/cjs`.
+const TSX_LOADER_FLAG =
+  /(?:--import|--loader|--experimental-loader|--require|-r)[= \t]+['"]?tsx(?:\/(?:esm|cjs))?(?![\w./-])/;
 // In code: an import of tsx or a subpath such as `tsx/esm/api`, a string that starts a
-// tsx command, or tsx as the program of a process call, as in `spawn('tsx', [...])`.
-const TSX_CODE_REFERENCE =
-  /(?:\bfrom|\bimport|\brequire(?:\.resolve)?)\s*\(?\s*['"]tsx(?:\/[^'"]*)?['"]|['"`](?:npx |pnpm (?:exec )?|yarn |bunx )?tsx\s|\(\s*['"`]tsx['"`]\s*,/;
-// Elsewhere (CI workflows, git hooks, shell scripts, JSON configs): tsx run with an
-// argument on the same line, or loaded into Node.js.
-const TSX_TEXT_REFERENCE =
-  /(?:^|[\s;&|("'=/`])tsx(?:\/(?:esm|cjs))?[ \t]+\S|(?:--import|--loader|--experimental-loader|--require|-r)[= \t]+['"]?tsx(?:\/(?:esm|cjs))?(?![\w./-])/m;
+// tsx command, tsx as the program of a process call, as in `spawn('tsx', [...])`, or a
+// loader flag, as in `nodeArguments: ['--import=tsx']`.
+const TSX_CODE_REFERENCE = new RegExp(
+  [
+    /(?:\bfrom|\bimport|\brequire(?:\.resolve)?)\s*\(?\s*['"]tsx(?:\/[^'"]*)?['"]/.source,
+    /['"`](?:npx |pnpm (?:exec )?|yarn |bunx )?tsx\s/.source,
+    /\(\s*['"`]tsx['"`]\s*,/.source,
+    TSX_LOADER_FLAG.source,
+  ].join('|'),
+);
+// In shell scripts, CI workflows, and git hooks: tsx in command position, with or
+// without arguments, or a loader flag.
+const TSX_TEXT_REFERENCE = new RegExp(
+  [
+    /(?:^|[\s;&|("'=/`])tsx(?:\/(?:esm|cjs))?(?:[ \t]+\S|[ \t]*$)/.source,
+    TSX_LOADER_FLAG.source,
+  ].join('|'),
+  'm',
+);
+// package.json fields that name tsx without running it: dependency declarations and prose.
+const IGNORED_FIELDS = new Set([
+  'bundleDependencies',
+  'bundledDependencies',
+  'dependencies',
+  'description',
+  'devDependencies',
+  'keywords',
+  'name',
+  'optionalDependencies',
+  'overrides',
+  'peerDependencies',
+  'peerDependenciesMeta',
+  'pnpm',
+  'resolutions',
+]);
 const CODE_EXTENSIONS: ReadonlySet<string> = new Set(SCRIPT_EXTENSIONS);
 const REFERENCE_EXTENSIONS: ReadonlySet<string> = new Set([
   ...SCRIPT_EXTENSIONS,
@@ -113,6 +145,14 @@ const COMMONJS_GLOBALS = [
   ['__filename', /(?<![.\w$])__filename\b/],
   ['require', /(?<![.\w$])require\s*(?:\(|\.resolve\b)/],
 ] as const;
+// A relative `require()` of a JavaScript path, which tsx also resolves to TypeScript.
+const RELATIVE_REQUIRE = /(?<![.\w$])require\s*\(\s*['"](\.{1,2}\/[^'"]+?)\.(js|cjs|mjs|jsx)['"]/g;
+const TYPESCRIPT_EXTENSIONS: Record<string, readonly string[]> = {
+  js: ['ts', 'tsx'],
+  cjs: ['cts'],
+  mjs: ['mts'],
+  jsx: ['tsx'],
+};
 // Programs that run a command given as one quoted argument, as in
 // `concurrently "tsx watch a.ts"`. Elsewhere, a quoted string is data, as for `echo`.
 const COMMAND_LAUNCHERS = new Set([
@@ -124,8 +164,6 @@ const COMMAND_LAUNCHERS = new Set([
   'start-server-and-test',
   'zsh',
 ]);
-// A `package.json#imports` target in tsx, such as `"#tsx": "tsx/esm/api"`.
-const TSX_IMPORT_TARGET = /"tsx(?:\/[^"]*)?"/;
 
 export interface TsxCommandRewrite {
   command: string;
@@ -233,13 +271,14 @@ function removal(tokens: LiteralCommandToken[], index: number): Edit {
 }
 
 /**
- * Why `vpx` would fail on a script that tsx runs, judged from its source. tsx compiles ES
- * module syntax to CommonJS in a `.cts` file and in a package without `"type": "module"`.
- * `vpx` rejects it in a `.cts` file and runs the other files as ES modules, as Node.js
- * does, so `__dirname`, `__filename`, and `require` are not defined.
+ * Why `vpx` would fail on a script that tsx runs, judged from its source. tsx resolves
+ * `require('./a.js')` to `a.ts`, and compiles ES module syntax to CommonJS in a `.cts`
+ * file and in a package without `"type": "module"`. `vpx` resolves `require()` as
+ * Node.js does, rejects ES module syntax in a `.cts` file, and runs the other files as ES
+ * modules, so `__dirname`, `__filename`, and `require` are not defined.
  */
 function scriptKeepReason(cwd: string | undefined, script: string): string | undefined {
-  if (cwd === undefined || !/\.(?:c?ts|tsx|jsx?)$/.test(script)) {
+  if (cwd === undefined || !SCRIPT_EXTENSIONS.some((extension) => script.endsWith(extension))) {
     return undefined;
   }
   const file = path.resolve(cwd, script);
@@ -249,7 +288,16 @@ function scriptKeepReason(cwd: string | undefined, script: string): string | und
   } catch {
     return undefined;
   }
-  if (!ESM_SYNTAX.test(source)) {
+  for (const [, base, extension] of source.matchAll(RELATIVE_REQUIRE)) {
+    const resolve = (ext: string) => path.resolve(path.dirname(file), `${base}.${ext}`);
+    const typescript = fs.existsSync(resolve(extension))
+      ? undefined
+      : TYPESCRIPT_EXTENSIONS[extension].find((ext) => fs.existsSync(resolve(ext)));
+    if (typescript) {
+      return `\`${script}\` requires \`${base}.${extension}\`, which only tsx resolves to \`${base}.${typescript}\`; write the TypeScript extension`;
+    }
+  }
+  if (!/\.(?:c?ts|tsx|jsx?)$/.test(script) || !ESM_SYNTAX.test(source)) {
     return undefined;
   }
   if (script.endsWith('.cts')) {
@@ -549,40 +597,55 @@ function findTsxUse(dir: string): string | undefined {
   sourceTreeMatches(
     dir,
     (content, file) => {
-      if (
-        LOCKFILES.has(path.basename(file)) ||
-        !(
-          TSX_SHEBANG.test(content) ||
-          (CODE_EXTENSIONS.has(path.extname(file)) ? TSX_CODE_REFERENCE : TSX_TEXT_REFERENCE).test(
-            content,
-          )
-        )
-      ) {
+      if (LOCKFILES.has(path.basename(file))) {
         return false;
       }
-      found = `${displayRelative(file)} still uses tsx`;
-      return true;
+      const extension = path.extname(file);
+      const uses =
+        TSX_SHEBANG.test(content) ||
+        (extension === '.json'
+          ? jsonUsesTsx(parseJsonc(content))
+          : (CODE_EXTENSIONS.has(extension) ? TSX_CODE_REFERENCE : TSX_TEXT_REFERENCE).test(
+              content,
+            ));
+      if (uses) {
+        found = `${displayRelative(file)} still uses tsx`;
+      }
+      return uses;
     },
     {
       crossPackageBoundaries: true,
       extensions: REFERENCE_EXTENSIONS,
       includeExtensionless: true,
       includePackageReferences: true,
+      // Scripts, `imports` aliases, and tool settings such as ava's `nodeArguments`.
       matchesPackage: (packageDir, pkg) => {
-        const file = displayRelative(path.join(packageDir, 'package.json'));
-        if (packageCommands(pkg).some((c) => TSX_COMMAND.test(c))) {
-          found = `scripts in ${file} still run tsx`;
-        } else if (
-          TSX_IMPORT_TARGET.test(JSON.stringify((pkg as { imports?: unknown }).imports ?? null))
-        ) {
-          found = `imports in ${file} still map to tsx`;
+        const field = Object.entries(pkg).find(
+          ([key, value]) => !IGNORED_FIELDS.has(key) && jsonUsesTsx(value),
+        )?.[0];
+        if (field !== undefined) {
+          found = `\`${field}\` in ${displayRelative(path.join(packageDir, 'package.json'))} still uses tsx`;
         }
-        return found !== undefined;
+        return field !== undefined;
       },
       skipDirs: RETENTION_SCAN_SKIP_DIRS,
     },
   );
   return found;
+}
+
+/**
+ * Whether a JSON value holds a string that runs or loads tsx: a command such as
+ * `tsx a.ts`, a loader flag such as `--import=tsx`, or tsx and its subpaths.
+ */
+function jsonUsesTsx(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return TSX_COMMAND.test(value) || value.startsWith('tsx/');
+  }
+  if (Array.isArray(value)) {
+    return value.some(jsonUsesTsx);
+  }
+  return isPlainRecord(value) && Object.values(value).some(jsonUsesTsx);
 }
 
 /**

@@ -263,7 +263,7 @@ Migration rewrites commands provided by the Vite+ toolchain in `package.json` sc
 | `tsup`        | `vp pack`, when its optional migration runs |
 | `tsx`         | `vpx`, when its optional migration runs     |
 
-For commands launched through `bunx`, migration preserves `bunx` and its `--bun` flag (keeping the user's chosen runtime) and rewrites only the managed command. This also works when `bunx` follows a command-launcher delimiter such as `run` or `--`:
+For commands launched through `bunx`, migration preserves `bunx` and its `--bun` flag (keeping the user's chosen runtime) and rewrites only the managed command. tsx is the exception: `bunx tsx` becomes `vpx`, and `bunx --bun tsx` keeps tsx (see [tsx to `vpx`](#tsx-to-vpx)). This also works when `bunx` follows a command-launcher delimiter such as `run` or `--`:
 
 | Before                                                  | After                                                    |
 | ------------------------------------------------------- | -------------------------------------------------------- |
@@ -278,20 +278,20 @@ Unrelated `bunx` commands and other package-executor forms remain unchanged.
 
 When a `package.json` script or lint-staged task runs [tsx](https://tsx.is), migration offers to move it to [`vpx`](/guide/vpx), Vite+'s TypeScript script runner. It rewrites scripts and lint-staged tasks in `package.json` and JSON lint-staged files, and `#!/usr/bin/env tsx` shebangs in script files:
 
-| Before                                   | After                                      |
-| ---------------------------------------- | ------------------------------------------ |
-| `tsx src/seed.ts --rows 10`              | `vpx src/seed.ts --rows 10`                |
-| `tsx watch --include "*.json" src/a.ts`  | `vpx --watch --include "*.json" src/a.ts`  |
-| `npx tsx a.ts`, `pnpm exec tsx a.ts`     | `vpx a.ts`                                 |
-| `node --import tsx ./a.ts`               | `vpx ./a.ts`                               |
-| `cross-env NODE_ENV=dev tsx a.ts`        | `cross-env NODE_ENV=dev vpx a.ts`          |
-| `concurrently "tsx watch a.ts" "vp dev"` | `concurrently "vpx --watch a.ts" "vp dev"` |
+| Before                                                | After                                      |
+| ----------------------------------------------------- | ------------------------------------------ |
+| `tsx src/seed.ts --rows 10`                           | `vpx src/seed.ts --rows 10`                |
+| `tsx watch --include "*.json" src/a.ts`               | `vpx --watch --include "*.json" src/a.ts`  |
+| `npx tsx a.ts`, `pnpm exec tsx a.ts`, `bunx tsx a.ts` | `vpx a.ts`                                 |
+| `node --import tsx ./a.ts`                            | `vpx ./a.ts`                               |
+| `cross-env NODE_ENV=dev tsx a.ts`                     | `cross-env NODE_ENV=dev vpx a.ts`          |
+| `concurrently "tsx watch a.ts" "vp dev"`              | `concurrently "vpx --watch a.ts" "vp dev"` |
 
 `tsx watch` becomes `vpx --watch`, never `vpx watch`, which runs the npm package `watch`. Node.js options and tsx watch options keep their order, and `--no-cache` is dropped. A quoted command is rewritten only for programs that run it, such as `concurrently`, `nodemon --exec`, `sh -c`, and `cross-env-shell`; a quoted argument of other programs, as in `echo "tsx a.ts"`, is data. `vpx` needs the same Node.js versions as Vite+ itself, and migration already upgrades incompatible runtime pins to them (see [Vitest 5](/guide/vitest-v5)).
 
-Migration keeps tsx, with a warning, for a command `vpx` cannot run: `--eval`, `--print`, or `--check`, the REPL, `--test` without files, an entry without a file extension, and commands with pipes, variables, or subshells. It also reads the scripts a command runs and keeps tsx when `vpx` would fail on them, because tsx compiles their ES module syntax to CommonJS: a `.cts` file with `import` or `export`, and a file that mixes `import` with `__dirname`, `__filename`, `require()`, or `module.exports` in a package without `"type": "module"`. A package that lists tsx in `dependencies`, `optionalDependencies`, or `peerDependencies` keeps it too, since `vpx` comes from the `vite-plus` devDependency.
+Migration keeps tsx, with a warning, for a command `vpx` cannot run: `--eval`, `--print`, or `--check`, the REPL, `--test` without files, an entry without a file extension, and commands with pipes, variables, or subshells. It also reads the scripts a command runs and keeps tsx when `vpx` would fail on them: a `require()` of `./a.js` that only tsx resolves to `a.ts`, and, because tsx compiles ES module syntax to CommonJS, a `.cts` file with `import` or `export`, and a file that mixes `import` with `__dirname`, `__filename`, `require()`, or `module.exports` in a package without `"type": "module"`. A package that lists tsx in `dependencies`, `optionalDependencies`, or `peerDependencies` keeps it too, since `vpx` comes from the `vite-plus` devDependency.
 
-Migration removes the `tsx` devDependency only when nothing uses tsx anymore: no kept script, no import of `tsx` or its subpaths such as `tsx/esm/api` (in source, build output, or a `package.json` `imports` alias), no shebang, and no tsx command in CI workflows, git hooks, or shell scripts. The root's dependency stays while any workspace package still uses tsx, and a package's dependency stays while a nested package under it does. When tsx stays, the warning names what still uses it.
+Migration removes the `tsx` devDependency only when nothing uses tsx anymore: no kept script, no import of `tsx` or its subpaths such as `tsx/esm/api` (in source, build output, or a `package.json` `imports` alias), no shebang, no tool setting such as `--import=tsx` in `package.json` or a JSON or JavaScript config, and no tsx command in CI workflows, git hooks, or shell scripts. The root's dependency stays while any workspace package still uses tsx, and a package's dependency stays while a nested package under it does. When tsx stays, the warning names what still uses it.
 
 See [Coming from tsx](/guide/vpx#coming-from-tsx) for the other differences.
 

@@ -138,6 +138,10 @@ describe('rewriteTsxCommand', () => {
         "import fs from 'node:fs';\nfs.readdirSync(__dirname);\n",
       );
       fs.writeFileSync(path.join(dir, 'tools/plain.ts'), 'export {};\n');
+      // tsx resolves `require('./helper.js')` to `helper.ts`; `vpx` does not.
+      fs.writeFileSync(path.join(dir, 'helper.ts'), 'exports.x = 1;\n');
+      fs.writeFileSync(path.join(dir, 'require-js.cts'), "const { x } = require('./helper.js');\n");
+      fs.writeFileSync(path.join(dir, 'require-bare.cts'), "const { x } = require('./helper');\n");
     });
 
     afterEach(() => {
@@ -152,6 +156,7 @@ describe('rewriteTsxCommand', () => {
       ['concurrently "tsx dirname.ts"', '`dirname.ts` mixes import with CommonJS globals'],
       ['cd tools && tsx only.ts', '`only.ts` mixes import with CommonJS globals'],
       ['tsx exports.ts', '`exports.ts` mixes import with CommonJS globals'],
+      ['tsx require-js.cts', 'requires `./helper.js`, which only tsx resolves to `./helper.ts`'],
       ['pushd tools && tsx plain.ts', 'changes the directory'],
     ])('keeps %s', (command, reason) => {
       expect(rewriteTsxCommand(command, dir)).toEqual({
@@ -164,6 +169,7 @@ describe('rewriteTsxCommand', () => {
       ['tsx cjs.cts', 'vpx cjs.cts'],
       ['tsx plain.ts', 'vpx plain.ts'],
       ['tsx esm-idioms.ts', 'vpx esm-idioms.ts'],
+      ['tsx require-bare.cts', 'vpx require-bare.cts'],
       ['tsx --test plain.ts', 'vpx --test plain.ts'],
       ['cd tools && tsx plain.ts', 'cd tools && vpx plain.ts'],
     ])('rewrites %s', (command, expected) => {
@@ -242,7 +248,7 @@ describe('migrateTsxToVpx', () => {
   });
 
   it.each([
-    ['a kept script', 'package.json', undefined, 'scripts in package.json still run tsx'],
+    ['a kept script', 'package.json', undefined, '`scripts` in package.json still uses tsx'],
     [
       'an import of the tsx API',
       'src/load.ts',
@@ -277,7 +283,7 @@ describe('migrateTsxToVpx', () => {
       'a nested package',
       'examples/demo/package.json',
       '{ "scripts": { "start": "tsx index.ts" } }\n',
-      'scripts in examples/demo/package.json still run tsx',
+      '`scripts` in examples/demo/package.json still uses tsx',
     ],
     [
       'build output',
@@ -290,6 +296,24 @@ describe('migrateTsxToVpx', () => {
       'src/run.ts',
       "import { spawn } from 'node:child_process';\nspawn('tsx', ['job.ts']);\n",
       'src/run.ts still uses tsx',
+    ],
+    [
+      'a shell pipe into tsx',
+      'scripts/run.sh',
+      'cat job.ts | tsx\n',
+      'scripts/run.sh still uses tsx',
+    ],
+    [
+      'a JSON tool config',
+      '.mocharc.json',
+      '{ "require": "tsx", "spec": "test/**/*.test.ts" }\n',
+      '.mocharc.json still uses tsx',
+    ],
+    [
+      'a JavaScript tool config',
+      'ava.config.js',
+      "export default { nodeArguments: ['--import=tsx'] };\n",
+      'ava.config.js still uses tsx',
     ],
   ])('keeps the tsx dependency used by %s', (_, file, content, user) => {
     write('package.json', {
@@ -347,10 +371,13 @@ describe('migrateTsxToVpx', () => {
     ]);
   });
 
-  it('keeps the tsx dependency behind a package.json imports alias', () => {
+  it.each([
+    ['imports', { '#loader': { node: 'tsx/esm/api' } }],
+    ['ava', { extensions: { ts: 'module' }, nodeArguments: ['--import=tsx'] }],
+  ])('keeps the tsx dependency used by the %s field of package.json', (field, value) => {
     write('package.json', {
-      imports: { '#loader': { node: 'tsx/esm/api' } },
       scripts: { dev: 'tsx watch src/server.ts' },
+      [field]: value,
       devDependencies: { tsx: '^4.20.0' },
     });
     const report = createMigrationReport();
@@ -358,7 +385,7 @@ describe('migrateTsxToVpx', () => {
     expect(migrateTsxToVpx(root, undefined, report).dependencyRemoved).toBe(false);
     expect(readJson('package.json').scripts.dev).toBe('vpx --watch src/server.ts');
     expect(report.warnings).toEqual([
-      'Kept the tsx devDependency in package.json: imports in package.json still map to tsx.',
+      `Kept the tsx devDependency in package.json: \`${field}\` in package.json still uses tsx.`,
     ]);
   });
 
@@ -425,7 +452,7 @@ describe('migrateTsxToVpx', () => {
     expect(readJson('package.json').devDependencies).toEqual({ tsx: '^4.20.0' });
     expect(report.warnings).toEqual([
       expect.stringContaining('Kept tsx in packages/b/package.json scripts "calc"'),
-      'Kept the tsx devDependency in package.json: scripts in packages/b/package.json still run tsx.',
+      'Kept the tsx devDependency in package.json: `scripts` in packages/b/package.json still uses tsx.',
     ]);
   });
 });

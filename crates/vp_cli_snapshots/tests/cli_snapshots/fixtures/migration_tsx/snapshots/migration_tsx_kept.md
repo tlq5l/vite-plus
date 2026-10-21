@@ -23,7 +23,7 @@ VITE+ - The Unified Toolchain for the Web
 ! Warnings:
   - Kept tsx in package.json scripts "calc": `vpx` does not run TypeScript passed to --eval or --print.
   - Kept tsx in package.json scripts "repl": `vpx` does not start a TypeScript REPL.
-  - Kept the tsx devDependency in package.json: scripts in package.json still run tsx.
+  - Kept the tsx devDependency in package.json: `scripts` in package.json still uses tsx.
 ```
 
 ## `vpt print-file package.json`
