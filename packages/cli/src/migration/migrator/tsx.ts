@@ -74,9 +74,10 @@ const TSX_ENV_SHEBANG = /^(#!\s*\S*\benv\s+(?:-S\s+)?)(tsx(?=[ \t\r\n]|$)[^\r\n]
 const SHEBANG_ENTRY = './shebang.ts';
 // Any first line that runs tsx, including `#!/usr/local/bin/tsx`.
 const TSX_SHEBANG = /^#![^\n]*[\s/]tsx(?=\s|$)/;
-// In code: an import of tsx or a subpath such as `tsx/esm/api`, or a string that starts a tsx command.
+// In code: an import of tsx or a subpath such as `tsx/esm/api`, a string that starts a
+// tsx command, or tsx as the program of a process call, as in `spawn('tsx', [...])`.
 const TSX_CODE_REFERENCE =
-  /(?:\bfrom|\bimport|\brequire(?:\.resolve)?)\s*\(?\s*['"]tsx(?:\/[^'"]*)?['"]|['"`](?:npx |pnpm (?:exec )?|yarn |bunx )?tsx\s/;
+  /(?:\bfrom|\bimport|\brequire(?:\.resolve)?)\s*\(?\s*['"]tsx(?:\/[^'"]*)?['"]|['"`](?:npx |pnpm (?:exec )?|yarn |bunx )?tsx\s|\(\s*['"`]tsx['"`]\s*,/;
 // Elsewhere (CI workflows, git hooks, shell scripts, JSON configs): tsx run with an
 // argument on the same line, or loaded into Node.js.
 const TSX_TEXT_REFERENCE =
@@ -104,9 +105,25 @@ const LOCKFILES = new Set([
   'yarn.lock',
 ]);
 
-// ES module syntax, and the CommonJS globals an ES module does not have.
+// ES module syntax, and uses of the CommonJS globals an ES module does not have.
 const ESM_SYNTAX = /^\s*(?:import\s*[\w*{'"]|export\s)|\bimport\.meta\b/m;
-const COMMONJS_GLOBALS = /\b(?:__dirname|__filename)\b|\brequire\s*\(/;
+const MODULE_EXPORTS = /(?<![.\w$])(?:module\.exports|exports\.\w)/;
+const COMMONJS_GLOBALS = [
+  ['__dirname', /(?<![.\w$])__dirname\b/],
+  ['__filename', /(?<![.\w$])__filename\b/],
+  ['require', /(?<![.\w$])require\s*(?:\(|\.resolve\b)/],
+] as const;
+// Programs that run a command given as one quoted argument, as in
+// `concurrently "tsx watch a.ts"`. Elsewhere, a quoted string is data, as for `echo`.
+const COMMAND_LAUNCHERS = new Set([
+  'bash',
+  'concurrently',
+  'nodemon',
+  'server-test',
+  'sh',
+  'start-server-and-test',
+  'zsh',
+]);
 // A `package.json#imports` target in tsx, such as `"#tsx": "tsx/esm/api"`.
 const TSX_IMPORT_TARGET = /"tsx(?:\/[^"]*)?"/;
 
@@ -180,7 +197,9 @@ function rewriteSegment(rewrite: Rewrite, tokens: LiteralCommandToken[]): void {
     }
   };
   skipAssignments();
-  if (values[first] === 'cross-env' || values[first] === 'cross-env-shell') {
+  // cross-env-shell runs its command, given as one quoted argument, in a shell.
+  const shell = values[first] === 'cross-env-shell';
+  if (values[first] === 'cross-env' || shell) {
     first++;
     skipAssignments();
   }
@@ -192,8 +211,7 @@ function rewriteSegment(rewrite: Rewrite, tokens: LiteralCommandToken[]): void {
     rewriteTsx(rewrite, tokens, first, start);
   } else if (values[start] === 'node') {
     rewriteNodeLoader(rewrite, tokens, first, start);
-  } else {
-    // A command another tool runs, given as one quoted argument: `concurrently "tsx watch a.ts"`.
+  } else if (shell || COMMAND_LAUNCHERS.has(values[start])) {
     for (const token of tokens.slice(start)) {
       rewriteQuotedCommand(rewrite, token);
     }
@@ -238,12 +256,26 @@ function scriptKeepReason(cwd: string | undefined, script: string): string | und
     return `\`${script}\` uses import or export, which \`vpx\` does not compile to CommonJS; rename it to .mts`;
   }
   if (
-    COMMONJS_GLOBALS.test(source) &&
+    usesCommonJsGlobals(source) &&
     readNearestPackageJson(path.dirname(file))?.type !== 'module'
   ) {
-    return `\`${script}\` mixes import with __dirname, __filename, or require(), and \`vpx\` runs it as an ES module; use import.meta.dirname, import.meta.filename, or createRequire()`;
+    return `\`${script}\` mixes import with CommonJS globals such as __dirname, require, or module.exports, and \`vpx\` runs it as an ES module; use import.meta.dirname, import.meta.filename, createRequire(), or export`;
   }
   return undefined;
+}
+
+/**
+ * Whether `source` uses `module.exports`, `exports`, or a CommonJS global it does not
+ * declare itself, as in `const require = createRequire(import.meta.url)`.
+ */
+function usesCommonJsGlobals(source: string): boolean {
+  return (
+    MODULE_EXPORTS.test(source) ||
+    COMMONJS_GLOBALS.some(
+      ([name, use]) =>
+        use.test(source) && !new RegExp(`\\b(?:const|let|var|function)\\s+${name}\\b`).test(source),
+    )
+  );
 }
 
 /**

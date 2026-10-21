@@ -46,6 +46,8 @@ describe('rewriteTsxCommand', () => {
       'concurrently "vpx --watch src/api.ts" "vp dev"',
     ],
     ["nodemon --exec 'tsx src/a.ts'", "nodemon --exec 'vpx src/a.ts'"],
+    ["sh -c 'tsx src/a.ts && vp build'", "sh -c 'vpx src/a.ts && vp build'"],
+    ['cross-env-shell "tsx src/a.ts"', 'cross-env-shell "vpx src/a.ts"'],
   ])('rewrites %s', (command, expected) => {
     const result = rewriteTsxCommand(command);
     expect(result.command).toBe(expected);
@@ -81,6 +83,8 @@ describe('rewriteTsxCommand', () => {
     ['node --import tsx --watch-path src ./a.ts', '--watch-path'],
     ["NODE_OPTIONS='--import tsx' node ./a.ts", 'does not rewrite this use of tsx'],
     ['pnpm dlx tsx ./a.ts', 'does not rewrite this use of tsx'],
+    // A quoted argument of a program that does not run commands is data.
+    ['echo "tsx scripts/build.ts"', 'does not rewrite this use of tsx'],
   ])('keeps %s', (command, reason) => {
     const result = rewriteTsxCommand(command);
     expect(result.command).toBe(command);
@@ -109,6 +113,24 @@ describe('rewriteTsxCommand', () => {
         path.join(dir, 'plain.ts'),
         "import fs from 'node:fs';\nfs.readdirSync('.');\n",
       );
+      fs.writeFileSync(
+        path.join(dir, 'exports.ts'),
+        "import fs from 'node:fs';\nmodule.exports = fs.readdirSync('.');\n",
+      );
+      // ES module idioms that only look like CommonJS globals.
+      fs.writeFileSync(
+        path.join(dir, 'esm-idioms.ts'),
+        [
+          "import path from 'node:path';",
+          "import { createRequire } from 'node:module';",
+          "import { fileURLToPath } from 'node:url';",
+          'const __dirname = path.dirname(fileURLToPath(import.meta.url));',
+          'const require = createRequire(import.meta.url);',
+          "const pkg = require(path.join(__dirname, 'package.json'));",
+          'console.log(pkg.exports.x);',
+          '',
+        ].join('\n'),
+      );
       // Only `cd tools` finds this script.
       fs.mkdirSync(path.join(dir, 'tools'));
       fs.writeFileSync(
@@ -125,10 +147,11 @@ describe('rewriteTsxCommand', () => {
     it.each([
       ['tsx esm.cts', '`esm.cts` uses import or export'],
       ['node --import tsx ./esm.cts', '`./esm.cts` uses import or export'],
-      ['tsx watch dirname.ts', '`dirname.ts` mixes import with __dirname'],
-      ['tsx --test plain.ts dirname.ts', '`dirname.ts` mixes import with __dirname'],
-      ['concurrently "tsx dirname.ts"', '`dirname.ts` mixes import with __dirname'],
-      ['cd tools && tsx only.ts', '`only.ts` mixes import with __dirname'],
+      ['tsx watch dirname.ts', '`dirname.ts` mixes import with CommonJS globals'],
+      ['tsx --test plain.ts dirname.ts', '`dirname.ts` mixes import with CommonJS globals'],
+      ['concurrently "tsx dirname.ts"', '`dirname.ts` mixes import with CommonJS globals'],
+      ['cd tools && tsx only.ts', '`only.ts` mixes import with CommonJS globals'],
+      ['tsx exports.ts', '`exports.ts` mixes import with CommonJS globals'],
       ['pushd tools && tsx plain.ts', 'changes the directory'],
     ])('keeps %s', (command, reason) => {
       expect(rewriteTsxCommand(command, dir)).toEqual({
@@ -140,6 +163,7 @@ describe('rewriteTsxCommand', () => {
     it.each([
       ['tsx cjs.cts', 'vpx cjs.cts'],
       ['tsx plain.ts', 'vpx plain.ts'],
+      ['tsx esm-idioms.ts', 'vpx esm-idioms.ts'],
       ['tsx --test plain.ts', 'vpx --test plain.ts'],
       ['cd tools && tsx plain.ts', 'cd tools && vpx plain.ts'],
     ])('rewrites %s', (command, expected) => {
@@ -188,6 +212,8 @@ describe('migrateTsxToVpx', () => {
     write('.lintstagedrc.json', { '*.md': 'tsx scripts/docs.ts' });
     write('scripts/release.ts', '#!/usr/bin/env tsx\nconsole.log("release");\n');
     write('src/server.ts', 'export {};\n');
+    // File extensions are not uses of tsx.
+    write('vite.config.ts', "export default { resolve: { extensions: ['ts', 'tsx'] } };\n");
     const report = createMigrationReport();
 
     expect(detectTsxProject(root)).toBe(true);
@@ -258,6 +284,12 @@ describe('migrateTsxToVpx', () => {
       'dist/launcher.js',
       "import { register } from 'tsx/esm/api';\n",
       'dist/launcher.js still uses tsx',
+    ],
+    [
+      'a process call',
+      'src/run.ts',
+      "import { spawn } from 'node:child_process';\nspawn('tsx', ['job.ts']);\n",
+      'src/run.ts still uses tsx',
     ],
   ])('keeps the tsx dependency used by %s', (_, file, content, user) => {
     write('package.json', {
@@ -368,10 +400,10 @@ describe('migrateTsxToVpx', () => {
     expect(read('scripts/release.ts')).toMatch(/^#!\/usr\/bin\/env tsx\n/);
     expect(report.warnings).toEqual([
       expect.stringContaining(
-        'Kept tsx in package.json scripts "build": `scripts/build.ts` mixes import with __dirname',
+        'Kept tsx in package.json scripts "build": `scripts/build.ts` mixes import with CommonJS globals',
       ),
       expect.stringContaining(
-        'Kept tsx in the shebang of scripts/release.ts: `./release.ts` mixes import with __dirname',
+        'Kept tsx in the shebang of scripts/release.ts: `./release.ts` mixes import with CommonJS globals',
       ),
     ]);
   });
