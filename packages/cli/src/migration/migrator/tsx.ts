@@ -53,6 +53,8 @@ const KEEP_SHELL =
   'the command uses shell syntax that vp migrate does not rewrite, such as pipes, variables, or subshells';
 const KEEP_OTHER = 'vp migrate does not rewrite this use of tsx';
 const KEEP_CWD = 'an earlier command changes the directory in a way vp migrate does not follow';
+const KEEP_TSX_TSCONFIG =
+  '`TSX_TSCONFIG_PATH` selects the tsconfig for tsx only; pass it to `vpx` as `--tsconfig`';
 
 // Options that `vpx` does not run as tsx does. `-c` is Node.js' `--check`, but `vpx -c`
 // is `--shell-mode`.
@@ -153,16 +155,19 @@ const TYPESCRIPT_EXTENSIONS: Record<string, readonly string[]> = {
   mjs: ['mts'],
   jsx: ['tsx'],
 };
-// Programs that run a command given as one quoted argument, as in
-// `concurrently "tsx watch a.ts"`. Elsewhere, a quoted string is data, as for `echo`.
-const COMMAND_LAUNCHERS = new Set([
-  'bash',
-  'concurrently',
-  'nodemon',
-  'server-test',
-  'sh',
-  'start-server-and-test',
-  'zsh',
+// Programs that run commands given as quoted arguments, and which arguments those are,
+// judged by the argument before: every one for `concurrently "tsx watch a.ts" "vp dev"`,
+// only the value of `-c` for a shell. Elsewhere, a quoted string is data, as for `echo`.
+const everyArgument = () => true;
+const shellCommand = (previous: string) => /^-[a-z]*c$/.test(previous);
+const COMMAND_LAUNCHERS = new Map<string, (previous: string) => boolean>([
+  ['bash', shellCommand],
+  ['concurrently', everyArgument],
+  ['nodemon', (previous) => previous === '--exec' || previous === '-x'],
+  ['server-test', everyArgument],
+  ['sh', shellCommand],
+  ['start-server-and-test', everyArgument],
+  ['zsh', shellCommand],
 ]);
 
 export interface TsxCommandRewrite {
@@ -244,14 +249,27 @@ function rewriteSegment(rewrite: Rewrite, tokens: LiteralCommandToken[]): void {
   if (first >= values.length) {
     return;
   }
+  // tsx reads TSX_TSCONFIG_PATH; `vpx` takes `--tsconfig` instead.
+  const tsconfigReason = values
+    .slice(0, first)
+    .some((value) => value.startsWith('TSX_TSCONFIG_PATH='))
+    ? KEEP_TSX_TSCONFIG
+    : undefined;
   const start = first + getCommandStartIndex(values.slice(first));
+  const launcher = COMMAND_LAUNCHERS.get(values[start]);
   if (values[start] === 'tsx') {
-    rewriteTsx(rewrite, tokens, first, start);
+    rewriteTsx(rewrite, tokens, first, start, tsconfigReason);
   } else if (values[start] === 'node') {
-    rewriteNodeLoader(rewrite, tokens, first, start);
-  } else if (shell || COMMAND_LAUNCHERS.has(values[start])) {
+    rewriteNodeLoader(rewrite, tokens, first, start, tsconfigReason);
+  } else if (shell) {
     for (const token of tokens.slice(start)) {
       rewriteQuotedCommand(rewrite, token);
+    }
+  } else if (launcher) {
+    for (let index = start + 1; index < tokens.length; index++) {
+      if (launcher(values[index - 1])) {
+        rewriteQuotedCommand(rewrite, tokens[index]);
+      }
     }
   }
 }
@@ -360,7 +378,23 @@ function rewriteTsx(
   tokens: LiteralCommandToken[],
   first: number,
   start: number,
+  keepReason: string | undefined,
 ): void {
+  // `yarn tsx`, `pnpm tsx`, and `bun tsx` run the package's own `tsx` script before the bin.
+  if (
+    start === first + 1 &&
+    ['bun', 'pnpm', 'yarn'].includes(tokens[first].value) &&
+    typeof rewrite.cwd === 'string'
+  ) {
+    const scripts = readNearestPackageJson(rewrite.cwd)?.scripts;
+    if (isPlainRecord(scripts) && scripts.tsx !== undefined) {
+      keepReason ??= `\`${tokens[first].value} tsx\` runs the package's own \`tsx\` script`;
+    }
+  }
+  if (keepReason) {
+    rewrite.kept.push(keepReason);
+    return;
+  }
   let index = start + 1;
   const watch = tokens[index]?.value === 'watch';
   if (watch) {
@@ -415,10 +449,11 @@ function rewriteNodeLoader(
   tokens: LiteralCommandToken[],
   first: number,
   start: number,
+  keepReason: string | undefined,
 ): void {
   const loaders: Edit[] = [];
   let entryIndex = tokens.length;
-  let optionReason: string | undefined;
+  let optionReason = keepReason;
   let test = false;
   for (let index = start + 1; index < tokens.length; index++) {
     const { value } = tokens[index];

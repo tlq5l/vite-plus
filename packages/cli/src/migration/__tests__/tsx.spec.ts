@@ -47,6 +47,8 @@ describe('rewriteTsxCommand', () => {
     ],
     ["nodemon --exec 'tsx src/a.ts'", "nodemon --exec 'vpx src/a.ts'"],
     ["sh -c 'tsx src/a.ts && vp build'", "sh -c 'vpx src/a.ts && vp build'"],
+    ["bash -lc 'tsx src/a.ts'", "bash -lc 'vpx src/a.ts'"],
+    ["nodemon --watch src --exec 'tsx src/a.ts'", "nodemon --watch src --exec 'vpx src/a.ts'"],
     ['cross-env-shell "tsx src/a.ts"', 'cross-env-shell "vpx src/a.ts"'],
   ])('rewrites %s', (command, expected) => {
     const result = rewriteTsxCommand(command);
@@ -85,6 +87,10 @@ describe('rewriteTsxCommand', () => {
     ['pnpm dlx tsx ./a.ts', 'does not rewrite this use of tsx'],
     // A quoted argument of a program that does not run commands is data.
     ['echo "tsx scripts/build.ts"', 'does not rewrite this use of tsx'],
+    // Only the value of `-c` is a command; the next argument is the shell's `$0`.
+    [`sh -c 'echo "$0"' 'tsx a.ts'`, 'does not rewrite this use of tsx'],
+    ['TSX_TSCONFIG_PATH=cli.json tsx ./a.ts', 'TSX_TSCONFIG_PATH'],
+    ['TSX_TSCONFIG_PATH=cli.json node --import tsx ./a.ts', 'TSX_TSCONFIG_PATH'],
   ])('keeps %s', (command, reason) => {
     const result = rewriteTsxCommand(command);
     expect(result.command).toBe(command);
@@ -180,6 +186,16 @@ describe('rewriteTsxCommand', () => {
       fs.writeFileSync(path.join(dir, 'package.json'), '{ "type": "module" }\n');
       // `"type": "module"` already ran it as an ES module under tsx.
       expect(rewriteTsxCommand('tsx dirname.ts', dir).command).toBe('vpx dirname.ts');
+    });
+
+    it('keeps a package-manager shorthand that runs a script named tsx', () => {
+      fs.writeFileSync(path.join(dir, 'package.json'), '{ "scripts": { "tsx": "node run.js" } }\n');
+      expect(rewriteTsxCommand('yarn tsx plain.ts', dir)).toEqual({
+        command: 'yarn tsx plain.ts',
+        kept: ["`yarn tsx` runs the package's own `tsx` script"],
+      });
+      // `exec` always runs the bin.
+      expect(rewriteTsxCommand('pnpm exec tsx plain.ts', dir).command).toBe('vpx plain.ts');
     });
   });
 });
