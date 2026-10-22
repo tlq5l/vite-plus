@@ -344,7 +344,7 @@ impl PackageManager {
     /// Let pnpm apply its `verifyDepsBeforeRun` setting before `vp run` starts
     /// scripts. pnpm runs the check itself for `pnpm run` and `pnpm exec`, so a
     /// no-op `pnpm exec` gives `vp run` the same install-or-fail behavior.
-    /// Other package managers have no such check and succeed immediately.
+    /// For other package managers this returns success without running anything.
     pub async fn verify_deps_before_run(
         &self,
         cwd: &AbsolutePath,
